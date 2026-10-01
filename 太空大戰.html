@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星際子彈時間 · 單文件遊戲</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #0a0f1e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+        }
+        .game-container {
+            background: #111a2b;
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7), 0 0 0 2px #2a3a55 inset;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 16px;
+            box-shadow: 0 0 30px #3f6a9b55;
+            cursor: crosshair;
+            background: #05080f;
+        }
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #b8d4ff;
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: #0b111e;
+            border-radius: 40px;
+            border: 1px solid #2e4a6b;
+            font-weight: bold;
+            text-shadow: 0 0 8px #3f9eff;
+            letter-spacing: 1px;
+        }
+        .hud span {
+            color: #7ff0ff;
+        }
+        .mode-tip {
+            display: flex;
+            gap: 30px;
+        }
+        .btn {
+            background: #1d2f47;
+            border: none;
+            color: #b8d4ff;
+            font-family: inherit;
+            font-weight: bold;
+            padding: 6px 18px;
+            border-radius: 40px;
+            cursor: pointer;
+            box-shadow: 0 0 12px #3f6a9b;
+            transition: 0.2s;
+            letter-spacing: 1px;
+        }
+        .btn:hover {
+            background: #2e4a6b;
+            color: #fff;
+            box-shadow: 0 0 18px #6fa8ff;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <canvas id="gameCanvas" width="1000" height="650"></canvas>
+    <div class="hud">
+        <div>❤️ <span id="hpDisplay">100</span>  |  ⚡ <span id="energyDisplay">100</span></div>
+        <div class="mode-tip">
+            <span>🖱️ 左鍵射擊 | 右鍵子彈時間</span>
+            <span id="modeDisplay">🌌 無盡模式</span>
+        </div>
+        <button class="btn" id="switchModeBtn">切換合作Boss</button>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const hpDisplay = document.getElementById('hpDisplay');
+        const energyDisplay = document.getElementById('energyDisplay');
+        const modeDisplay = document.getElementById('modeDisplay');
+        const switchModeBtn = document.getElementById('switchModeBtn');
+
+        // ---------- 核心参数 ----------
+        const W = 1000, H = 650;
+        let gameMode = 'endless'; // 'endless' 或 'boss'
+        let gameOver = false;
+
+        // 玩家
+        let player = {
+            x: W/2, y: H - 70,
+            w: 32, h: 32,
+            hp: 100, maxHp: 100,
+            energy: 100, maxEnergy: 100,
+            speed: 4.5,
+            weaponLevel: 1,          // 1: 單發, 2: 雙發, 3: 三發散射, 4: 雷射+散彈
+            fireCooldown: 0,
+            bulletTime: false,
+            invincible: 0
+        };
+
+        // 按鍵
+        const keys = { a:false, d:false, w:false, s:false, ArrowLeft:false, ArrowRight:false, ArrowUp:false, ArrowDown:false };
+        let mouseLeft = false, mouseRight = false;
+        let mouseX = player.x, mouseY = player.y - 20; // 默認準心位置
+
+        // ---------- 物件池 ----------
+        function ObjectPool(factory, resetFn, initialSize = 30) {
+            this.factory = factory;
+            this.resetFn = resetFn;
+            this.pool = [];
+            this.active = [];
+            for (let i = 0; i < initialSize; i++) {
+                this.pool.push(factory());
+            }
+        }
+        ObjectPool.prototype.get = function() {
+            let obj;
+            if (this.pool.length > 0) {
+                obj = this.pool.pop();
+            } else {
+                obj = this.factory();
+            }
+            this.resetFn(obj);
+            this.active.push(obj);
+            return obj;
+        };
+        ObjectPool.prototype.release = function(obj) {
+            const idx = this.active.indexOf(obj);
+            if (idx !== -1) {
+                this.active.splice(idx, 1);
+                this.pool.push(obj);
+            }
+        };
+        ObjectPool.prototype.releaseAll = function() {
+            while (this.active.length) {
+                this.pool.push(this.active.pop());
+            }
+        };
+        ObjectPool.prototype.forEachActive = function(callback) {
+            for (let i = this.active.length - 1; i >= 0; i--) {
+                callback(this.active[i], i);
+            }
+        };
+        ObjectPool.prototype.clear = function() {
+            this.releaseAll();
+        };
+
+        // ---------- 全局池 ----------
+        // 玩家子彈池
+        const playerBulletPool = new ObjectPool(
+            () => ({ x:0, y:0, vx:0, vy:0, w:6, h:14, damage: 10, color:'#7ff0ff', active:true }),
+            (b) => { b.x=0; b.y=0; b.vx=0; b.vy=0; b.damage=10; b.color='#7ff0ff'; },
+            60
+        );
+        // 敵方子彈池
+        const enemyBulletPool = new ObjectPool(
+            () => ({ x:0, y:0, vx:0, vy:0, w:7, h:7, damage: 12, color:'#ff4d6d', active:true }),
+            (b) => { b.x=0; b.y=0; b.vx=0; b.vy=0; b.damage=12; },
+            80
+        );
+        // 敵人池
+        const enemyPool = new ObjectPool(
+            () => ({ x:0, y:0, w:36, h:36, hp:20, maxHp:20, speed:1.2, type:'basic', color:'#ff7b4a', fireTimer:0, pattern:0, active:true, vx:0, vy:0 }),
+            (e) => { e.hp=20; e.maxHp=20; e.speed=1.2; e.type='basic'; e.color='#ff7b4a'; e.fireTimer=0; e.pattern=0; },
+            30
+        );
+        // 道具池
+        const powerupPool = new ObjectPool(
+            () => ({ x:0, y:0, w:16, h:16, type:'weapon', speed: 2.5, color:'#f0e68c', active:true }),
+            (p) => { p.type='weapon'; p.color='#f0e68c'; p.speed=2.5; },
+            20
+        );
+        // Boss用 (單獨實例，不入池但管理方便)
+        let boss = {
+            x: W/2, y: 110, w: 120, h: 100,
+            hp: 500, maxHp: 500,
+            active: false,
+            fireTimer: 0,
+            patternTimer: 0,
+            phase: 1
+        };
+
+        // ---------- 輔助 ----------
+        function dist(x1,y1,x2,y2) { return Math.hypot(x2-x1, y2-y1); }
+
+        // ---------- 重置遊戲 ----------
+        function resetGame() {
+            gameOver = false;
+            player.hp = player.maxHp = 100;
+            player.energy = player.maxEnergy = 100;
+            player.weaponLevel = 1;
+            player.x = W/2; player.y = H-70;
+            player.invincible = 0;
+
+            playerBulletPool.clear();
+            enemyBulletPool.clear();
+            enemyPool.clear();
+            powerupPool.clear();
+
+            boss.active = false;
+            boss.hp = boss.maxHp = 500;
+
+            if (gameMode === 'endless') {
+                spawnTimer = 0;
+                difficultyTimer = 0;
+                modeDisplay.textContent = '🌌 無盡模式';
+            } else {
+                // Boss模式
+                modeDisplay.textContent = '👾 合作Boss';
+                boss.active = true;
+                boss.hp = boss.maxHp = 600;
+                boss.x = W/2; boss.y = 110;
+                boss.phase = 1;
+            }
+            player.invincible = 60; // 短暫無敵
+        }
+
+        // ---------- 遊戲變量 ----------
+        let spawnTimer = 0;
+        let difficultyTimer = 0;
+        let gameTime = 0;
+        let bossSpawned = false;
+
+        // ---------- 生成敵人 (無盡模式) ----------
+        function spawnEnemy() {
+            const e = enemyPool.get();
+            e.x = Math.random() * (W - 60) + 30;
+            e.y = -30;
+            // 難度遞增：隨時間增加血量與速度
+            const diff = Math.min(3, 1 + gameTime / 40);
+            e.hp = Math.floor(15 + diff * 8 + Math.random() * 8);
+            e.maxHp = e.hp;
+            e.speed = 1.0 + diff * 0.5 + Math.random() * 0.6;
+            e.w = 32 + diff * 4;
+            e.h = 32 + diff * 4;
+            e.type = Math.random() < 0.2 ? 'shooter' : 'basic';
+            e.color = e.type === 'shooter' ? '#b84aff' : '#ff7b4a';
+            e.fireTimer = 0;
+            e.pattern = Math.floor(Math.random() * 3); // 0:直線, 1:擺動, 2:追蹤(有限)
+            e.vx = 0; e.vy = 0;
+        }
+
+        // ---------- 發射玩家子彈 ----------
+        function shootPlayerBullet(targetX, targetY) {
+            const dx = targetX - player.x;
+            const dy = targetY - player.y;
+            const len = Math.hypot(dx, dy);
+            if (len < 0.001) return;
+            const normDx = dx / len;
+            const normDy = dy / len;
+
+            const lvl = player.weaponLevel;
+            const speed = 11;
+            const baseDamage = 8 + lvl * 3;
+
+            // 根據等級不同彈道
+            if (lvl === 1) {
+                const b = playerBulletPool.get();
+                b.x = player.x; b.y = player.y - 10;
+                b.vx = normDx * speed; b.vy = normDy * speed;
+                b.damage = baseDamage;
+                b.color = '#7ff0ff';
+            } else if (lvl === 2) {
+                for (let i = -1; i <= 1; i+=2) {
+                    const b = playerBulletPool.get();
+                    b.x = player.x + i*8; b.y = player.y - 10;
+                    const angle = Math.atan2(normDy, normDx) + i * 0.08;
+                    b.vx = Math.cos(angle) * speed;
+                    b.vy = Math.sin(angle) * speed;
+                    b.damage = baseDamage * 0.9;
+                    b.color = '#7ff0ff';
+                }
+            } else if (lvl === 3) {
+                for (let i = -1; i <= 1; i++) {
+                    const b = playerBulletPool.get();
+                    b.x = player.x + i*10; b.y = player.y - 8;
+                    const angle = Math.atan2(normDy, normDx) + i * 0.18;
+                    b.vx = Math.cos(angle) * speed;
+                    b.vy = Math.sin(angle) * speed;
+                    b.damage = baseDamage * 0.8;
+                    b.color = i === 0 ? '#ffd966' : '#7ff0ff';
+                }
+            } else if (lvl >= 4) {
+                // 雷射+散彈：中間高速雷射，兩側散射
+                const b1 = playerBulletPool.get();
+                b1.x = player.x; b1.y = player.y - 12;
+                b1.vx = normDx * 14; b1.vy = normDy * 14;
+                b1.damage = baseDamage * 1.2;
+                b1.color = '#ffaa33';
+                for (let i = -1; i <= 1; i+=2) {
+                    const b = playerBulletPool.get();
+                    b.x = player.x + i*12; b.y = player.y - 6;
+                    const angle = Math.atan2(normDy, normDx) + i * 0.25;
+                    b.vx = Math.cos(angle) * (speed*0.9);
+                    b.vy = Math.sin(angle) * (speed*0.9);
+                    b.damage = baseDamage * 0.7;
+                    b.color = '#7ff0ff';
+                }
+            }
+        }
+
+        // ---------- 敵人射擊 ----------
+        function enemyShoot(e, targetX, targetY) {
+            const b = enemyBulletPool.get();
+            b.x = e.x; b.y = e.y;
+            const dx = targetX - e.x;
+            const dy = targetY - e.y;
+            const len = Math.hypot(dx, dy);
+            const speed = 3.8;
+            b.vx = (dx/len) * speed;
+            b.vy = (dy/len) * speed;
+            b.damage = 10 + Math.min(10, gameTime/10);
+            b.color = '#ff4d6d';
+        }
+
+        // ---------- 更新玩家 ----------
+        function updatePlayer(dt) {
+            if (gameOver) return;
+            // 移動
+            let moveX = 0, moveY = 0;
+            if (keys.a || keys.ArrowLeft) moveX -= 1;
+            if (keys.d || keys.ArrowRight) moveX += 1;
+            if (keys.w || keys.ArrowUp) moveY -= 1;
+            if (keys.s || keys.ArrowDown) moveY += 1;
+            if (moveX !== 0 || moveY !== 0) {
+                const len = Math.hypot(moveX, moveY);
+                moveX = moveX / len * player.speed;
+                moveY = moveY / len * player.speed;
+            }
+            player.x = Math.max(30, Math.min(W-30, player.x + moveX));
+            player.y = Math.max(40, Math.min(H-40, player.y + moveY));
+
+            // 冷卻
+            if (player.fireCooldown > 0) player.fireCooldown -= 1;
+            // 無敵
+            if (player.invincible > 0) player.invincible -= 1;
+
+            // 子彈時間能量
+            if (player.bulletTime && player.energy > 0) {
+                player.energy = Math.max(0, player.energy - 0.45);
+                if (player.energy <= 0) player.bulletTime = false;
+            } else {
+                if (!player.bulletTime) {
+                    player.energy = Math.min(player.maxEnergy, player.energy + 0.15);
+                }
+            }
+
+            // 射擊
+            if (mouseLeft && player.fireCooldown <= 0) {
+                shootPlayerBullet(mouseX, mouseY);
+                player.fireCooldown = player.weaponLevel >= 3 ? 8 : 10;
+            }
+        }
+
+        // ---------- 更新子彈 ----------
+        function updateBullets() {
+            // 玩家子彈
+            playerBulletPool.forEachActive((b, idx) => {
+                b.x += b.vx;
+                b.y += b.vy;
+                if (b.x < -30 || b.x > W+30 || b.y < -30 || b.y > H+30) {
+                    playerBulletPool.release(b);
+                }
+            });
+            // 敵方子彈
+            enemyBulletPool.forEachActive((b, idx) => {
+                b.x += b.vx;
+                b.y += b.vy;
+                if (b.x < -30 || b.x > W+30 || b.y < -30 || b.y > H+30) {
+                    enemyBulletPool.release(b);
+                }
+            });
+        }
+
+        // ---------- 更新敵人 (無盡) ----------
+        function updateEnemies(dt) {
+            if (gameMode !== 'endless') return;
+            // 生成
+            if (!gameOver) {
+                spawnTimer--;
+                if (spawnTimer <= 0) {
+                    spawnEnemy();
+                    const baseInterval = Math.max(18, 50 - gameTime * 0.5);
+                    spawnTimer = Math.floor(baseInterval + Math.random() * 20);
+                }
+            }
+
+            enemyPool.forEachActive((e, idx) => {
+                // 移動 AI
+                if (e.pattern === 0) {
+                    e.y += e.speed;
+                } else if (e.pattern === 1) {
+                    e.y += e.speed * 0.8;
+                    e.x += Math.sin(gameTime * 0.1 + idx) * 1.8;
+                } else {
+                    // 追蹤型：慢慢朝玩家水平移動
+                    e.y += e.speed * 0.7;
+                    if (player.x > e.x) e.x += 0.7;
+                    else if (player.x < e.x) e.x -= 0.7;
+                }
+                e.x = Math.max(10, Math.min(W-10, e.x));
+
+                // 射擊
+                if (e.type === 'shooter') {
+                    e.fireTimer--;
+                    if (e.fireTimer <= 0 && e.y > 20 && e.y < H-100) {
+                        enemyShoot(e, player.x, player.y);
+                        e.fireTimer = 70 + Math.random() * 40;
+                    }
+                }
+
+                // 碰撞玩家
+                if (player.invincible <= 0 && dist(e.x, e.y, player.x, player.y) < 35) {
+                    player.hp -= 18;
+                    player.invincible = 25;
+                    if (player.hp <= 0) { player.hp = 0; gameOver = true; }
+                }
+
+                // 超出底部或死亡
+                if (e.y > H + 50 || e.hp <= 0) {
+                    if (e.hp <= 0) {
+                        // 掉落道具機率
+                        if (Math.random() < 0.25) {
+                            const p = powerupPool.get();
+                            p.x = e.x; p.y = e.y;
+                            p.type = Math.random() < 0.7 ? 'weapon' : 'health';
+                            p.color = p.type === 'weapon' ? '#f0e68c' : '#ff6b8b';
+                        }
+                    }
+                    enemyPool.release(e);
+                }
+            });
+        }
+
+        // ---------- 更新Boss模式 ----------
+        function updateBoss(dt) {
+            if (gameMode !== 'boss' || !boss.active || gameOver) return;
+
+            // Boss移動
+            boss.patternTimer++;
+            boss.x = W/2 + Math.sin(boss.patternTimer * 0.02) * 200;
+            boss.y = 110 + Math.sin(boss.patternTimer * 0.03) * 20;
+
+            // 發射子彈
+            boss.fireTimer--;
+            if (boss.fireTimer <= 0) {
+                const bulletCount = boss.phase === 1 ? 8 : 14;
+                const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
+                for (let i = 0; i < bulletCount; i++) {
+                    const b = enemyBulletPool.get();
+                    b.x = boss.x; b.y = boss.y + 20;
+                    const angle = baseAngle + (i - bulletCount/2) * 0.25;
+                    const spd = 3.5 + boss.phase * 0.8;
+                    b.vx = Math.cos(angle) * spd;
+                    b.vy = Math.sin(angle) * spd;
+                    b.damage = 12;
+                    b.color = '#ff2e63';
+                }
+                boss.fireTimer = boss.phase === 1 ? 45 : 30;
+            }
+
+            // 血量階段
+            if (boss.hp < boss.maxHp * 0.5 && boss.phase === 1) {
+                boss.phase = 2;
+                boss.fireTimer = 20;
+            }
+
+            // 碰撞玩家
+            if (player.invincible <= 0 && dist(boss.x, boss.y, player.x, player.y) < 80) {
+                player.hp -= 25;
+                player.invincible = 30;
+                if (player.hp <= 0) { player.hp = 0; gameOver = true; }
+            }
+        }
+
+        // ---------- 更新道具 ----------
+        function updatePowerups() {
+            powerupPool.forEachActive((p, idx) => {
+                p.y += p.speed;
+                // 拾取
+                if (dist(p.x, p.y, player.x, player.y) < 28) {
+                    if (p.type === 'weapon') {
+                        player.weaponLevel = Math.min(4, player.weaponLevel + 1);
+                    } else {
+                        player.hp = Math.min(player.maxHp, player.hp + 25);
+                    }
+                    powerupPool.release(p);
+                } else if (p.y > H + 40) {
+                    powerupPool.release(p);
+                }
+            });
+        }
+
+        // ---------- 碰撞檢測 (子彈 vs 敵人/Boss) ----------
+        function handleCollisions() {
+            // 玩家子彈 vs 敵人 (無盡)
+            if (gameMode === 'endless') {
+                playerBulletPool.forEachActive((b, idx) => {
+                    let hit = false;
+                    enemyPool.forEachActive((e) => {
+                        if (dist(b.x, b.y, e.x, e.y) < 26) {
+                            e.hp -= b.damage;
+                            hit = true;
+                        }
+                    });
+                    if (hit) playerBulletPool.release(b);
+                });
+            } else if (gameMode === 'boss' && boss.active) {
+                playerBulletPool.forEachActive((b, idx) => {
+                    if (dist(b.x, b.y, boss.x, boss.y) < 60) {
+                        boss.hp -= b.damage;
+                        playerBulletPool.release(b);
+                        if (boss.hp <= 0) {
+                            boss.hp = 0;
+                            boss.active = false;
+                            // 勝利，但繼續遊戲？ 顯示勝利後重置
+                            gameOver = true; // 簡單處理：勝利也遊戲結束
+                        }
+                    }
+                });
+            }
+
+            // 敵方子彈 vs 玩家
+            enemyBulletPool.forEachActive((b, idx) => {
+                if (player.invincible <= 0 && dist(b.x, b.y, player.x, player.y) < 24) {
+                    player.hp -= b.damage;
+                    player.invincible = 15;
+                    if (player.hp <= 0) { player.hp = 0; gameOver = true; }
+                    enemyBulletPool.release(b);
+                }
+            });
+        }
+
+        // ---------- 渲染 ----------
+        function render() {
+            ctx.clearRect(0, 0, W, H);
+
+            // 星空背景
+            ctx.fillStyle = '#05080f';
+            ctx.fillRect(0, 0, W, H);
+            for (let i = 0; i < 150; i++) {
+                const sx = (i * 131) % W;
+                const sy = (i * 279 + gameTime * 2) % H;
+                ctx.fillStyle = `rgba(255,255,255,${0.5 + Math.sin(i+gameTime*0.02)*0.3})`;
+                ctx.beginPath();
+                ctx.arc(sx, sy, 1.2, 0, Math.PI*2);
+                ctx.fill();
+            }
+
+            // 玩家飛船
+            ctx.shadowColor = '#3f9eff';
+            ctx.shadowBlur = 18;
+            ctx.fillStyle = player.invincible % 6 > 3 ? '#ffffff' : '#7ff0ff';
+            ctx.beginPath();
+            ctx.moveTo(player.x, player.y-24);
+            ctx.lineTo(player.x-22, player.y+16);
+            ctx.lineTo(player.x+22, player.y+16);
+            ctx.closePath();
+            ctx.fill();
+            // 駕駛艙
+            ctx.fillStyle = '#b8e2ff';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y-8, 7, 0, Math.PI*2);
+            ctx.fill();
+
+            // 敵人
+            enemyPool.forEachActive((e) => {
+                ctx.shadowColor = '#ff4d4d';
+                ctx.shadowBlur = 14;
+                ctx.fillStyle = e.color;
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.w/2, 0, Math.PI*2);
+                ctx.fill();
+                // 血量條
+                const hpPercent = e.hp / e.maxHp;
+                ctx.fillStyle = '#222';
+                ctx.fillRect(e.x-20, e.y-28, 40, 6);
+                ctx.fillStyle = '#ff5e5e';
+                ctx.fillRect(e.x-20, e.y-28, 40 * hpPercent, 6);
+            });
+
+            // Boss
+            if (gameMode === 'boss' && boss.active) {
+                ctx.shadowColor = '#ff0066';
+                ctx.shadowBlur = 30;
+                ctx.fillStyle = '#b0306a';
+                ctx.beginPath();
+                ctx.ellipse(boss.x, boss.y, 70, 55, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#ff8c42';
+                ctx.beginPath();
+                ctx.ellipse(boss.x-15, boss.y-15, 20, 15, 0, 0, Math.PI*2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(boss.x+15, boss.y-15, 20, 15, 0, 0, Math.PI*2);
+                ctx.fill();
+                // Boss血條
+                const bossHpPercent = boss.hp / boss.maxHp;
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(W/2-200, 25, 400, 24);
+                ctx.fillStyle = '#ff2e63';
+                ctx.fillRect(W/2-200, 25, 400 * bossHpPercent, 24);
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText('BOSS', W/2, 43);
+            }
+
+            // 子彈
+            ctx.shadowBlur = 10;
+            playerBulletPool.forEachActive((b) => {
+                ctx.shadowColor = b.color;
+                ctx.fillStyle = b.color;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
+                ctx.fill();
+            });
+            enemyBulletPool.forEachActive((b) => {
+                ctx.shadowColor = b.color;
+                ctx.fillStyle = b.color;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 6, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // 道具
+            powerupPool.forEachActive((p) => {
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 18;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 12, 0, Math.PI*2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText(p.type === 'weapon' ? 'W' : 'H', p.x, p.y+5);
+            });
+
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+
+            // 準心
+            if (!gameOver) {
+                ctx.strokeStyle = '#b8d4ff';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, 8, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(mouseX-14, mouseY);
+                ctx.lineTo(mouseX-6, mouseY);
+                ctx.moveTo(mouseX+6, mouseY);
+                ctx.lineTo(mouseX+14, mouseY);
+                ctx.moveTo(mouseX, mouseY-14);
+                ctx.lineTo(mouseX, mouseY-6);
+                ctx.moveTo(mouseX, mouseY+6);
+                ctx.lineTo(mouseX, mouseY+14);
+                ctx.stroke();
+            }
+
+            // 子彈時間特效
+            if (player.bulletTime) {
+                ctx.fillStyle = 'rgba(100, 180, 255, 0.12)';
+                ctx.fillRect(0, 0, W, H);
+            }
+
+            // 遊戲結束
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, W, H);
+                ctx.fillStyle = '#f0e68c';
+                ctx.font = 'bold 48px "Courier New"';
+                ctx.textAlign = 'center';
+                ctx.fillText(gameMode === 'boss' && !boss.active ? '勝利!' : 'GAME OVER', W/2, H/2);
+                ctx.font = '20px "Courier New"';
+                ctx.fillStyle = '#b8d4ff';
+                ctx.fillText('點擊畫面重新開始', W/2, H/2 + 70);
+            }
+
+            // 更新HUD
+            hpDisplay.textContent = Math.floor(player.hp);
+            energyDisplay.textContent = Math.floor(player.energy);
+        }
+
+        // ---------- 遊戲主循環 ----------
+        let lastTime = 0;
+        function gameLoop(now) {
+            const dt = Math.min(32, now - lastTime) / 16.67; // 標準化
+            lastTime = now;
+
+            if (!gameOver) {
+                // 子彈時間：減慢遊戲速度（但玩家移動不減？用dt縮放部分邏輯）
+                let timeScale = player.bulletTime ? 0.35 : 1.0;
+
+                // 更新玩家（不受子彈時間影響移動速度）
+                updatePlayer(dt);
+
+                // 更新子彈與敵人（受時間縮放）
+                // 這裡手動調整子彈速度？因為使用了固定增量，簡化：複製更新邏輯但乘以timeScale
+                // 但為了簡單，我們直接修改全局的更新函數，但我們把子彈和敵人的移動乘以timeScale
+                // 改進：使用自定義更新，傳入timeScale
+                updateBulletsWithScale(timeScale);
+                updateEnemiesWithScale(timeScale);
+                updateBossWithScale(timeScale);
+                updatePowerups(); // 道具不受子彈時間影響？讓它受影響吧
+                // 重新實現道具更新，簡單起見直接用原函數但忽略倍率，也可以
+                // 乾脆完全重新做，但保持整潔
+
+                // 為了避免重複代碼，直接使用已存在函數但修改內部？不，這裡快速調整：手動調用倍率版本
+
+                handleCollisions();
+
+                // 難度計時
+                if (!gameOver) {
+                    gameTime += 0.5;
+                    if (gameMode === 'endless') {
+                        difficultyTimer++;
+                    }
+                }
+            }
+
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 子彈更新（帶縮放）
+        function updateBulletsWithScale(scale) {
+            playerBulletPool.forEachActive((b) => {
+                b.x += b.vx * scale;
+                b.y += b.vy * scale;
+                if (b.x < -30 || b.x > W+30 || b.y < -30 || b.y > H+30) playerBulletPool.release(b);
+            });
+            enemyBulletPool.forEachActive((b) => {
+                b.x += b.vx * scale;
+                b.y += b.vy * scale;
+                if (b.x < -30 || b.x > W+30 || b.y < -30 || b.y > H+30) enemyBulletPool.release(b);
+            });
+        }
+
+        // 敵人更新（帶縮放）
+        function updateEnemiesWithScale(scale) {
+            if (gameMode !== 'endless') return;
+            if (!gameOver) {
+                spawnTimer -= scale;
+                if (spawnTimer <= 0) {
+                    spawnEnemy();
+                    const baseInterval = Math.max(18, 50 - gameTime * 0.5);
+                    spawnTimer = Math.floor(baseInterval + Math.random() * 20);
+                }
+            }
+
+            enemyPool.forEachActive((e, idx) => {
+                // 移動
+                if (e.pattern === 0) {
+                    e.y += e.speed * scale;
+                } else if (e.pattern === 1) {
+                    e.y += e.speed * 0.8 * scale;
+                    e.x += Math.sin(gameTime * 0.1 + idx) * 1.8 * scale;
+                } else {
+                    e.y += e.speed * 0.7 * scale;
+                    if (player.x > e.x) e.x += 0.7 * scale;
+                    else if (player.x < e.x) e.x -= 0.7 * scale;
+                }
+                e.x = Math.max(10, Math.min(W-10, e.x));
+
+                // 射擊 (用scale影響計時)
+                if (e.type === 'shooter') {
+                    e.fireTimer -= scale;
+                    if (e.fireTimer <= 0 && e.y > 20 && e.y < H-100) {
+                        enemyShoot(e, player.x, player.y);
+                        e.fireTimer = 70 + Math.random() * 40;
+                    }
+                }
+
+                // 碰撞玩家 (碰撞不縮放)
+                if (player.invincible <= 0 && dist(e.x, e.y, player.x, player.y) < 35) {
+                    player.hp -= 18;
+                    player.invincible = 25;
+                    if (player.hp <= 0) { player.hp = 0; gameOver = true; }
+                }
+
+                if (e.y > H + 50 || e.hp <= 0) {
+                    if (e.hp <= 0 && Math.random() < 0.25) {
+                        const p = powerupPool.get();
+                        p.x = e.x; p.y = e.y;
+                        p.type = Math.random() < 0.7 ? 'weapon' : 'health';
+                        p.color = p.type === 'weapon' ? '#f0e68c' : '#ff6b8b';
+                    }
+                    enemyPool.release(e);
+                }
+            });
+        }
+
+        function updateBossWithScale(scale) {
+            if (gameMode !== 'boss' || !boss.active || gameOver) return;
+            boss.patternTimer += scale;
+            boss.x = W/2 + Math.sin(boss.patternTimer * 0.02) * 200;
+            boss.y = 110 + Math.sin(boss.patternTimer * 0.03) * 20;
+
+            boss.fireTimer -= scale;
+            if (boss.fireTimer <= 0) {
+                const bulletCount = boss.phase === 1 ? 8 : 14;
+                const baseAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
+                for (let i = 0; i < bulletCount; i++) {
+                    const b = enemyBulletPool.get();
+                    b.x = boss.x; b.y = boss.y + 20;
+                    const angle = baseAngle + (i - bulletCount/2) * 0.25;
+                    const spd = 3.5 + boss.phase * 0.8;
+                    b.vx = Math.cos(angle) * spd;
+                    b.vy = Math.sin(angle) * spd;
+                    b.damage = 12;
+                    b.color = '#ff2e63';
+                }
+                boss.fireTimer = boss.phase === 1 ? 45 : 30;
+            }
+
+            if (boss.hp < boss.maxHp * 0.5 && boss.phase === 1) {
+                boss.phase = 2;
+                boss.fireTimer = 20;
+            }
+
+            if (player.invincible <= 0 && dist(boss.x, boss.y, player.x, player.y) < 80) {
+                player.hp -= 25;
+                player.invincible = 30;
+                if (player.hp <= 0) { player.hp = 0; gameOver = true; }
+            }
+        }
+
+        // 道具更新（也加縮放，不影響太大）
+        function updatePowerups() {
+            powerupPool.forEachActive((p) => {
+                p.y += p.speed;
+                if (dist(p.x, p.y, player.x, player.y) < 28) {
+                    if (p.type === 'weapon') player.weaponLevel = Math.min(4, player.weaponLevel + 1);
+                    else player.hp = Math.min(player.maxHp, player.hp + 25);
+                    powerupPool.release(p);
+                } else if (p.y > H + 40) powerupPool.release(p);
+            });
+        }
+
+        // ---------- 事件監聽 ----------
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'a' || key === 'arrowleft') keys.a = true;
+            if (key === 'd' || key === 'arrowright') keys.d = true;
+            if (key === 'w' || key === 'arrowup') keys.w = true;
+            if (key === 's' || key === 'arrowdown') keys.s = true;
+            // 防止箭頭滾動
+            if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
+        });
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'a' || key === 'arrowleft') keys.a = false;
+            if (key === 'd' || key === 'arrowright') keys.d = false;
+            if (key === 'w' || key === 'arrowup') keys.w = false;
+            if (key === 's' || key === 'arrowdown') keys.s = false;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            mouseX = (e.clientX - rect.left) * scaleX;
+            mouseY = (e.clientY - rect.top) * scaleY;
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) mouseLeft = true;
+            if (e.button === 2) {
+                mouseRight = true;
+                if (player.energy > 0) player.bulletTime = true;
+            }
+            e.preventDefault();
+        });
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) mouseLeft = false;
+            if (e.button === 2) {
+                mouseRight = false;
+                player.bulletTime = false;
+            }
+            e.preventDefault();
+        });
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // 點擊畫布重新開始
+        canvas.addEventListener('click', (e) => {
+            if (gameOver) {
+                resetGame();
+            }
+        });
+
+        // 切換模式
+        switchModeBtn.addEventListener('click', () => {
+            if (gameMode === 'endless') {
+                gameMode = 'boss';
+                modeDisplay.textContent = '👾 合作Boss';
+            } else {
+                gameMode = 'endless';
+                modeDisplay.textContent = '🌌 無盡模式';
+            }
+            resetGame();
+        });
+
+        // 初始化
+        resetGame();
+        requestAnimationFrame(gameLoop);
+    })();
+</script>
+</body>
+</html>
