@@ -1,0 +1,1558 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>你畫我猜 - P2P 連線版</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+        }
+        body {
+            min-height: 100vh;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            overflow: hidden;
+        }
+        #game {
+            width: 100%;
+            max-width: 1100px;
+            height: 95vh;
+            max-height: 800px;
+            display: flex;
+            gap: 12px;
+        }
+        /* 主畫布區 */
+        #mainArea {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #16213e;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        #topBar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #0f3460;
+            color: white;
+            gap: 10px;
+            flex-wrap: wrap;
+            min-height: 56px;
+        }
+        #topBar .word-display {
+            font-size: 1.1em;
+            font-weight: bold;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 16px;
+            border-radius: 20px;
+            letter-spacing: 2px;
+        }
+        #topBar .timer {
+            font-size: 1.6em;
+            font-weight: 800;
+            color: #ffaa00;
+            min-width: 70px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        #topBar .timer.warning {
+            color: #ff3333;
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse {
+            from { transform: scale(1); }
+            to { transform: scale(1.15); }
+        }
+        #topBar .round-info {
+            font-size: 0.9em;
+            color: #aac;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 14px;
+            border-radius: 16px;
+        }
+        #canvasWrap {
+            flex: 1;
+            position: relative;
+            background: #ffffff;
+            margin: 8px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.1);
+        }
+        #drawCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        #canvasOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            flex-direction: column;
+            gap: 15px;
+        }
+        #canvasOverlay.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #canvasOverlay .small {
+            font-size: 0.5em;
+            color: #aac;
+            font-weight: normal;
+        }
+        #canvasOverlay button {
+            font-size: 0.5em;
+            padding: 12px 30px;
+            border-radius: 30px;
+            border: 2px solid #ffaa00;
+            background: #0f3460;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        #canvasOverlay button:hover {
+            background: #ffaa00;
+            color: black;
+        }
+        /* 工具列 */
+        #toolBar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0f3460;
+            flex-wrap: wrap;
+        }
+        .tool-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #1a1a2e;
+            color: white;
+            font-size: 1.1em;
+            transition: all 0.2s;
+        }
+        .tool-btn:hover {
+            background: #2a2a4e;
+        }
+        .tool-btn.active {
+            border-color: #ffaa00;
+            background: #2a2a4e;
+        }
+        .color-swatch {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.1s;
+        }
+        .color-swatch:hover {
+            transform: scale(1.15);
+        }
+        .color-swatch.active {
+            border-color: white;
+            box-shadow: 0 0 10px rgba(255,255,255,0.8);
+            transform: scale(1.15);
+        }
+        .size-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .size-btn.active {
+            border-color: #ffaa00;
+        }
+        .size-dot {
+            border-radius: 50%;
+            background: white;
+        }
+        #clearBtn {
+            margin-left: auto;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 2px solid #ff5555;
+            background: transparent;
+            color: #ff5555;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s;
+        }
+        #clearBtn:hover {
+            background: #ff5555;
+            color: white;
+        }
+        /* 側邊欄 */
+        #sidebar {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            background: #16213e;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        #sidebarHeader {
+            padding: 12px 16px;
+            background: #0f3460;
+            color: white;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #sidebarHeader .conn-badge {
+            font-size: 0.75em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #555;
+            color: white;
+        }
+        #sidebarHeader .conn-badge.online {
+            background: #00aa55;
+        }
+        #sidebarHeader .conn-badge.host {
+            background: #ffaa00;
+            color: black;
+        }
+        #playerList {
+            padding: 8px 12px;
+            background: #0a0a1e;
+            max-height: 120px;
+            overflow-y: auto;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .player-chip {
+            padding: 4px 12px;
+            border-radius: 16px;
+            background: #1a1a2e;
+            color: white;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #333;
+        }
+        .player-chip .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00ff88;
+        }
+        .player-chip.drawing {
+            border-color: #ffaa00;
+            background: #2a2a1e;
+        }
+        .player-chip.drawing .dot {
+            background: #ffaa00;
+        }
+        .player-chip.me {
+            border-color: #4488ff;
+        }
+        .player-chip .score {
+            color: #ffaa00;
+            font-weight: bold;
+            margin-left: 4px;
+        }
+        #chatBox {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: #0a0a1e;
+        }
+        .chat-msg {
+            padding: 8px 12px;
+            border-radius: 12px;
+            background: #1a1a2e;
+            color: #ddd;
+            font-size: 0.9em;
+            word-break: break-word;
+            max-width: 90%;
+            animation: slideIn 0.2s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-msg.system {
+            background: #2a2a1e;
+            color: #ffaa00;
+            font-style: italic;
+            text-align: center;
+            max-width: 100%;
+            font-size: 0.85em;
+        }
+        .chat-msg.correct {
+            background: #00aa55;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            max-width: 100%;
+        }
+        .chat-msg.self {
+            align-self: flex-end;
+            background: #0f3460;
+        }
+        .chat-msg .sender {
+            font-weight: bold;
+            color: #88aaff;
+            margin-right: 6px;
+            font-size: 0.85em;
+        }
+        .chat-msg.system .sender,
+        .chat-msg.correct .sender {
+            display: none;
+        }
+        #chatInputArea {
+            display: flex;
+            padding: 10px;
+            background: #0f3460;
+            gap: 8px;
+        }
+        #chatInput {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 20px;
+            border: none;
+            outline: none;
+            background: #1a1a2e;
+            color: white;
+            font-size: 0.95em;
+        }
+        #chatInput:disabled {
+            opacity: 0.5;
+        }
+        #sendBtn {
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: none;
+            background: #ffaa00;
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        #sendBtn:hover {
+            background: #ffcc44;
+        }
+        #sendBtn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        /* 選單 */
+        #menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            color: white;
+            transition: opacity 0.4s;
+        }
+        #menu.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #menu h1 {
+            font-size: 3.5em;
+            margin-bottom: 8px;
+            background: linear-gradient(45deg, #ffaa00, #ff5500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 4px;
+        }
+        #menu .sub {
+            color: #aaa;
+            margin-bottom: 35px;
+            font-size: 1em;
+            letter-spacing: 2px;
+        }
+        .menu-btn {
+            background: linear-gradient(135deg, #333, #222);
+            color: white;
+            border: 2px solid #ffaa00;
+            padding: 14px 40px;
+            margin: 7px;
+            border-radius: 50px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 300px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+        .menu-btn:hover {
+            background: #ffaa00;
+            color: black;
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(255,170,0,0.5);
+        }
+        .menu-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .menu-btn.small {
+            padding: 10px 25px;
+            font-size: 0.95em;
+            width: auto;
+        }
+        #connectionPanel {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #connectionStatus {
+            margin-top: 15px;
+            color: #00ff88;
+            font-size: 1em;
+            min-height: 1.5em;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 25px;
+            border-radius: 30px;
+            border: 1px solid #333;
+        }
+        #connectionStatus.error {
+            color: #ff5555;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            justify-content: center;
+        }
+        .input-group input {
+            padding: 12px 20px;
+            border-radius: 30px;
+            border: 2px solid #444;
+            background: #222;
+            color: white;
+            font-size: 1em;
+            outline: none;
+            width: 220px;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+        .input-group input:focus {
+            border-color: #ffaa00;
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* 音效提示 */
+        .toast {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-20px);
+            background: #ffaa00;
+            color: black;
+            padding: 12px 30px;
+            border-radius: 30px;
+            font-weight: bold;
+            z-index: 200;
+            opacity: 0;
+            transition: all 0.3s;
+            pointer-events: none;
+            box-shadow: 0 5px 20px rgba(255,170,0,0.4);
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        /* 響應式 */
+        @media (max-width: 800px) {
+            #game {
+                flex-direction: column;
+                height: auto;
+                max-height: none;
+            }
+            #sidebar {
+                width: 100%;
+                height: 300px;
+            }
+            #mainArea {
+                height: 60vh;
+            }
+            #menu h1 {
+                font-size: 2.5em;
+            }
+            .menu-btn {
+                width: 260px;
+                padding: 12px 30px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game">
+        <!-- 主畫布區 -->
+        <div id="mainArea">
+            <div id="topBar">
+                <div class="word-display" id="wordDisplay">等待開始...</div>
+                <div class="timer" id="timerDisplay">--</div>
+                <div class="round-info" id="roundInfo">第 1 回合</div>
+            </div>
+            <div id="canvasWrap">
+                <canvas id="drawCanvas"></canvas>
+                <div id="canvasOverlay">
+                    <div id="overlayText">等待遊戲開始</div>
+                    <div class="small" id="overlaySub"></div>
+                    <button id="overlayBtn" class="hidden">開始遊戲</button>
+                </div>
+            </div>
+            <div id="toolBar">
+                <div class="tool-btn active" id="penBtn" title="畫筆">✏️</div>
+                <div class="tool-btn" id="eraserBtn" title="橡皮擦">🧽</div>
+                <div class="color-swatch active" data-color="#000000" style="background:#000000;"></div>
+                <div class="color-swatch" data-color="#ff3333" style="background:#ff3333;"></div>
+                <div class="color-swatch" data-color="#3366ff" style="background:#3366ff;"></div>
+                <div class="color-swatch" data-color="#33cc33" style="background:#33cc33;"></div>
+                <div class="color-swatch" data-color="#ffaa00" style="background:#ffaa00;"></div>
+                <div class="color-swatch" data-color="#9933ff" style="background:#9933ff;"></div>
+                <div class="color-swatch" data-color="#ff66cc" style="background:#ff66cc;"></div>
+                <div class="size-btn" data-size="3" title="細"><div class="size-dot" style="width:6px;height:6px;"></div></div>
+                <div class="size-btn active" data-size="8" title="中"><div class="size-dot" style="width:12px;height:12px;"></div></div>
+                <div class="size-btn" data-size="18" title="粗"><div class="size-dot" style="width:20px;height:20px;"></div></div>
+                <button id="clearBtn">🗑️ 清除</button>
+            </div>
+        </div>
+
+        <!-- 側邊欄 -->
+        <div id="sidebar">
+            <div id="sidebarHeader">
+                <span>💬 聊天與玩家</span>
+                <span class="conn-badge" id="connBadge">單機</span>
+            </div>
+            <div id="playerList">
+                <div class="player-chip me">
+                    <div class="dot"></div>
+                    <span>你</span>
+                    <span class="score">0</span>
+                </div>
+            </div>
+            <div id="chatBox"></div>
+            <div id="chatInputArea">
+                <input type="text" id="chatInput" placeholder="輸入猜測..." maxlength="30" autocomplete="off">
+                <button id="sendBtn">送出</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主選單 -->
+    <div id="menu">
+        <h1>🎨 你畫我猜</h1>
+        <div class="sub">P2P 連線 · 即時同步 · 歡樂無限</div>
+        <button class="menu-btn" id="btnSolo">🎮 單機輪流玩</button>
+        <button class="menu-btn" id="btnHost">🌐 建立房間 (主機)</button>
+        <button class="menu-btn" id="btnJoin">🔗 加入房間 (客戶端)</button>
+        <div id="joinPanel" class="hidden" style="margin-top:15px;">
+            <div class="input-group">
+                <input type="text" id="peerIdInput" placeholder="輸入主機 ID" maxlength="30">
+                <button class="menu-btn small" id="btnConnect">連線</button>
+            </div>
+        </div>
+        <div id="connectionStatus">選擇模式開始遊戲</div>
+        <div style="margin-top:25px; color:#555; font-size:0.8em; text-align:center;">
+            P2P 需要網路連線 (使用 PeerJS 公共伺服器)<br>
+            單機模式無需網路
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "peerjs": "https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // ========== 詞庫 ==========
+        const WORD_BANK = [
+            '太陽', '月亮', '星星', '彩虹', '雲朵', '閃電', '下雨', '下雪',
+            '蘋果', '香蕉', '西瓜', '草莓', '鳳梨', '葡萄', '檸檬', '櫻桃',
+            '貓', '狗', '大象', '長頸鹿', '企鵝', '猴子', '兔子', '獅子',
+            '汽車', '飛機', '輪船', '腳踏車', '火車', '直升機', '火箭', '潛水艇',
+            '房子', '城堡', '橋樑', '燈塔', '帳篷', '風車', '金字塔', '摩天大樓',
+            '鋼琴', '吉他', '小提琴', '鼓', '喇叭', '麥克風', '耳機', '收音機',
+            '足球', '籃球', '棒球', '網球', '游泳', '跑步', '滑雪', '衝浪',
+            '蛋糕', '冰淇淋', '披薩', '漢堡', '壽司', '拉麵', '火鍋', '珍珠奶茶',
+            '眼鏡', '帽子', '手錶', '鞋子', '書包', '雨傘', '鑰匙', '剪刀',
+            '電腦', '手機', '相機', '電視', '冰箱', '洗衣機', '電風扇', '檯燈'
+        ];
+
+        // ========== 遊戲狀態 ==========
+        const state = {
+            mode: 'menu', // menu, solo, host, client
+            gameActive: false,
+            round: 1,
+            totalRounds: 5,
+            currentDrawer: 0, // 玩家索引
+            currentWord: '',
+            wordRevealed: false,
+            timer: 0,
+            timerInterval: null,
+            roundTime: 80, // 每回合秒數
+            players: [],
+            myIndex: 0,
+            myId: null,
+            isHost: false,
+            peer: null,
+            conn: null,
+            connected: false,
+            remoteReady: false,
+            // 畫布
+            isDrawing: false,
+            lastX: 0,
+            lastY: 0,
+            currentColor: '#000000',
+            currentSize: 8,
+            isEraser: false,
+            // 同步用
+            pendingStrokes: [],
+            syncBuffer: [],
+            lastSyncTime: 0,
+            // 遊戲流程
+            roundActive: false,
+            guessedThisRound: new Set(),
+            canvasHistory: []
+        };
+
+        // ========== DOM 元素 ==========
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('canvasOverlay');
+        const overlayText = document.getElementById('overlayText');
+        const overlaySub = document.getElementById('overlaySub');
+        const overlayBtn = document.getElementById('overlayBtn');
+        const wordDisplay = document.getElementById('wordDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const roundInfo = document.getElementById('roundInfo');
+        const chatBox = document.getElementById('chatBox');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const playerList = document.getElementById('playerList');
+        const connBadge = document.getElementById('connBadge');
+        const toast = document.getElementById('toast');
+
+        // ========== 工具函數 ==========
+        function showToast(msg, duration = 1800) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), duration);
+        }
+
+        function shuffleArray(arr) {
+            const a = [...arr];
+            for (let i = a.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [a[i], a[j]] = [a[j], a[i]];
+            }
+            return a;
+        }
+
+        // ========== 畫布設定 ==========
+        function resizeCanvas() {
+            const wrap = canvas.parentElement;
+            const rect = wrap.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = rect.width + 'px';
+            canvas.style.height = rect.height + 'px';
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            redrawFromHistory();
+        }
+
+        function clearCanvasLocal(emit = true) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            state.canvasHistory = [];
+            if (emit && state.gameActive) {
+                sendData({ type: 'clear' });
+            }
+        }
+
+        function redrawFromHistory() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (const stroke of state.canvasHistory) {
+                drawStroke(stroke);
+            }
+        }
+
+        function drawStroke(stroke) {
+            ctx.beginPath();
+            ctx.strokeStyle = stroke.eraser ? '#ffffff' : stroke.color;
+            ctx.lineWidth = stroke.size;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            if (stroke.eraser) {
+                ctx.globalCompositeOperation = 'destination-out';
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            
+            const dpr = window.devicePixelRatio || 1;
+            const points = stroke.points;
+            if (points.length < 2) {
+                // 單點
+                ctx.beginPath();
+                ctx.arc(points[0].x * canvas.width, points[0].y * canvas.height, stroke.size / 2, 0, Math.PI * 2);
+                ctx.fillStyle = stroke.eraser ? '#ffffff' : stroke.color;
+                if (stroke.eraser) {
+                    ctx.globalCompositeOperation = 'destination-out';
+                }
+                ctx.fill();
+            } else {
+                ctx.moveTo(points[0].x * canvas.width, points[0].y * canvas.height);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x * canvas.width, points[i].y * canvas.height);
+                }
+                ctx.stroke();
+            }
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        // ========== 畫布事件 ==========
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) / rect.width,
+                y: (clientY - rect.top) / rect.height
+            };
+        }
+
+        function canDraw() {
+            if (!state.gameActive || !state.roundActive) return false;
+            // 只有當前畫家可以畫
+            if (state.players[state.currentDrawer]?.id !== state.myId && state.mode !== 'solo') return false;
+            if (state.mode === 'solo') {
+                // 單機模式，當前畫家就是玩家自己（輪流）
+                return true;
+            }
+            return true;
+        }
+
+        function startStroke(e) {
+            if (!canDraw()) return;
+            e.preventDefault();
+            state.isDrawing = true;
+            const pos = getCanvasPos(e);
+            state.lastX = pos.x;
+            state.lastY = pos.y;
+            
+            // 開始新的筆畫
+            const stroke = {
+                color: state.currentColor,
+                size: state.currentSize,
+                eraser: state.isEraser,
+                points: [{ x: pos.x, y: pos.y }]
+            };
+            state.currentStroke = stroke;
+            
+            // 立即繪製一個點
+            drawStroke(stroke);
+        }
+
+        function moveStroke(e) {
+            if (!state.isDrawing) return;
+            e.preventDefault();
+            const pos = getCanvasPos(e);
+            
+            if (state.currentStroke) {
+                state.currentStroke.points.push({ x: pos.x, y: pos.y });
+                // 只繪製最新的一段
+                const pts = state.currentStroke.points;
+                const prev = pts[pts.length - 2];
+                const curr = pts[pts.length - 1];
+                
+                ctx.beginPath();
+                ctx.strokeStyle = state.currentStroke.eraser ? '#ffffff' : state.currentStroke.color;
+                ctx.lineWidth = state.currentStroke.size;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                if (state.currentStroke.eraser) {
+                    ctx.globalCompositeOperation = 'destination-out';
+                } else {
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+                ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height);
+                ctx.lineTo(curr.x * canvas.width, curr.y * canvas.height);
+                ctx.stroke();
+                ctx.globalCompositeOperation = 'source-over';
+            }
+            
+            state.lastX = pos.x;
+            state.lastY = pos.y;
+            
+            // 同步發送（節流）
+            const now = performance.now();
+            if (now - state.lastSyncTime > 50) {
+                sendData({
+                    type: 'draw',
+                    stroke: {
+                        color: state.currentColor,
+                        size: state.currentSize,
+                        eraser: state.isEraser,
+                        points: [{ x: pos.x, y: pos.y }]
+                    }
+                });
+                state.lastSyncTime = now;
+            }
+        }
+
+        function endStroke(e) {
+            if (!state.isDrawing) return;
+            e.preventDefault();
+            state.isDrawing = false;
+            
+            if (state.currentStroke) {
+                state.canvasHistory.push(state.currentStroke);
+                // 完整同步一次
+                sendData({
+                    type: 'drawEnd',
+                    stroke: state.currentStroke
+                });
+                state.currentStroke = null;
+            }
+        }
+
+        canvas.addEventListener('mousedown', startStroke);
+        canvas.addEventListener('mousemove', moveStroke);
+        canvas.addEventListener('mouseup', endStroke);
+        canvas.addEventListener('mouseleave', endStroke);
+        canvas.addEventListener('touchstart', startStroke, { passive: false });
+        canvas.addEventListener('touchmove', moveStroke, { passive: false });
+        canvas.addEventListener('touchend', endStroke, { passive: false });
+        canvas.addEventListener('touchcancel', endStroke, { passive: false });
+
+        // ========== 工具列 ==========
+        document.getElementById('penBtn').addEventListener('click', () => {
+            state.isEraser = false;
+            document.getElementById('penBtn').classList.add('active');
+            document.getElementById('eraserBtn').classList.remove('active');
+        });
+        document.getElementById('eraserBtn').addEventListener('click', () => {
+            state.isEraser = true;
+            document.getElementById('eraserBtn').classList.add('active');
+            document.getElementById('penBtn').classList.remove('active');
+        });
+        document.querySelectorAll('.color-swatch').forEach(sw => {
+            sw.addEventListener('click', () => {
+                document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                sw.classList.add('active');
+                state.currentColor = sw.dataset.color;
+                state.isEraser = false;
+                document.getElementById('penBtn').classList.add('active');
+                document.getElementById('eraserBtn').classList.remove('active');
+            });
+        });
+        document.querySelectorAll('.size-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                state.currentSize = parseInt(btn.dataset.size);
+            });
+        });
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            if (!canDraw()) {
+                showToast('只有畫家可以清除畫布');
+                return;
+            }
+            clearCanvasLocal(true);
+        });
+
+        // ========== 聊天 ==========
+        function addChatMessage(text, sender = null, type = 'normal') {
+            const div = document.createElement('div');
+            div.className = 'chat-msg ' + type;
+            if (type === 'self') div.className = 'chat-msg self';
+            if (sender && type !== 'system' && type !== 'correct') {
+                const senderSpan = document.createElement('span');
+                senderSpan.className = 'sender';
+                senderSpan.textContent = sender + ':';
+                div.appendChild(senderSpan);
+            }
+            div.appendChild(document.createTextNode(text));
+            chatBox.appendChild(div);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function sendChat() {
+            const msg = chatInput.value.trim();
+            if (!msg) return;
+            
+            const myPlayer = state.players[state.myIndex];
+            addChatMessage(msg, myPlayer?.name || '我', 'self');
+            
+            // 檢查猜測
+            if (state.roundActive && state.currentWord && !state.guessedThisRound.has(state.myIndex)) {
+                checkGuess(msg, state.myIndex, myPlayer?.name || '我');
+            }
+            
+            // 發送
+            if (state.connected) {
+                sendData({
+                    type: 'chat',
+                    text: msg,
+                    sender: myPlayer?.name || '玩家',
+                    senderIndex: state.myIndex
+                });
+            }
+            
+            chatInput.value = '';
+        }
+
+        sendBtn.addEventListener('click', sendChat);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendChat();
+            }
+        });
+
+        // ========== 猜測邏輯 ==========
+        function checkGuess(text, playerIndex, playerName) {
+            if (!state.roundActive) return;
+            if (state.guessedThisRound.has(playerIndex)) return;
+            if (playerIndex === state.currentDrawer) return; // 畫家不能猜
+            
+            const normalized = text.trim().replace(/\s+/g, '');
+            if (normalized === state.currentWord) {
+                // 猜對了！
+                state.guessedThisRound.add(playerIndex);
+                
+                // 加分：越快猜中分數越高
+                const timeBonus = Math.max(1, Math.floor(state.timer / 5));
+                const points = 10 + timeBonus;
+                
+                if (state.players[playerIndex]) {
+                    state.players[playerIndex].score += points;
+                }
+                
+                addChatMessage(`🎉 ${playerName} 猜對了！ +${points} 分`, null, 'correct');
+                updatePlayerList();
+                
+                // 檢查是否所有人都猜對了
+                const activeGuessers = state.players.filter((p, i) => i !== state.currentDrawer);
+                const allGuessed = activeGuessers.every((p, i) => {
+                    const idx = state.players.indexOf(p);
+                    return state.guessedThisRound.has(idx);
+                });
+                
+                if (allGuessed || state.players.length <= 2) {
+                    // 回合提前結束
+                    endRound();
+                }
+                
+                // 同步
+                if (state.connected) {
+                    sendData({
+                        type: 'guessCorrect',
+                        playerIndex: playerIndex,
+                        points: points,
+                        playerName: playerName
+                    });
+                }
+            }
+        }
+
+        // ========== 玩家列表 ==========
+        function updatePlayerList() {
+            playerList.innerHTML = '';
+            state.players.forEach((p, i) => {
+                const chip = document.createElement('div');
+                chip.className = 'player-chip';
+                if (i === state.myIndex) chip.classList.add('me');
+                if (i === state.currentDrawer && state.roundActive) chip.classList.add('drawing');
+                
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                chip.appendChild(dot);
+                
+                const name = document.createElement('span');
+                name.textContent = p.name + (i === state.myIndex ? ' (你)' : '');
+                chip.appendChild(name);
+                
+                const score = document.createElement('span');
+                score.className = 'score';
+                score.textContent = p.score || 0;
+                chip.appendChild(score);
+                
+                playerList.appendChild(chip);
+            });
+        }
+
+        // ========== 遊戲流程 ==========
+        function initSoloGame() {
+            state.mode = 'solo';
+            state.players = [
+                { id: 'me', name: '你', score: 0 },
+                { id: 'p2', name: '玩家2', score: 0 },
+                { id: 'p3', name: '玩家3', score: 0 }
+            ];
+            state.myIndex = 0;
+            state.myId = 'me';
+            state.currentDrawer = 0;
+            state.round = 1;
+            startRound();
+        }
+
+        function startRound() {
+            if (state.mode === 'menu') return;
+            
+            // 重置狀態
+            state.roundActive = true;
+            state.guessedThisRound.clear();
+            state.wordRevealed = false;
+            state.timer = state.roundTime;
+            clearCanvasLocal(false);
+            
+            // 選詞
+            if (state.mode === 'solo' || state.isHost || state.mode === 'solo') {
+                state.currentWord = WORD_BANK[Math.floor(Math.random() * WORD_BANK.length)];
+                if (state.connected) {
+                    sendData({ type: 'word', word: state.currentWord, round: state.round });
+                }
+            }
+            
+            // 更新UI
+            updatePlayerList();
+            roundInfo.textContent = `第 ${state.round} / ${state.totalRounds} 回合`;
+            
+            // 顯示詞語
+            updateWordDisplay();
+            
+            // 隱藏遮罩
+            overlay.classList.remove('show');
+            
+            // 開始計時
+            if (state.timerInterval) clearInterval(state.timerInterval);
+            state.timerInterval = setInterval(() => {
+                state.timer--;
+                updateTimerDisplay();
+                if (state.timer <= 0) {
+                    endRound();
+                }
+            }, 1000);
+            updateTimerDisplay();
+            
+            // 系統訊息
+            const drawerName = state.players[state.currentDrawer]?.name || '畫家';
+            addChatMessage(`🎨 第 ${state.round} 回合開始！${drawerName} 正在畫圖...`, null, 'system');
+            
+            // 如果是畫家，顯示詞語
+            if (state.players[state.currentDrawer]?.id === state.myId) {
+                wordDisplay.textContent = `✏️ 請畫：${state.currentWord}`;
+                wordDisplay.style.color = '#ffaa00';
+            } else {
+                wordDisplay.textContent = '🤔 猜猜看畫的是什麼';
+                wordDisplay.style.color = '#fff';
+            }
+            
+            // 單機模式：如果當前畫家是AI（非玩家），需要自動畫圖
+            if (state.mode === 'solo' && state.currentDrawer !== state.myIndex) {
+                autoDrawForAI();
+            }
+        }
+
+        function updateWordDisplay() {
+            if (!state.currentWord) {
+                wordDisplay.textContent = '等待開始...';
+                return;
+            }
+            
+            if (state.players[state.currentDrawer]?.id === state.myId || state.wordRevealed) {
+                wordDisplay.textContent = `✏️ ${state.currentWord}`;
+                wordDisplay.style.color = '#ffaa00';
+            } else {
+                wordDisplay.textContent = '🤔 猜猜看畫的是什麼';
+                wordDisplay.style.color = '#fff';
+            }
+        }
+
+        function updateTimerDisplay() {
+            timerDisplay.textContent = state.timer + 's';
+            if (state.timer <= 10) {
+                timerDisplay.classList.add('warning');
+            } else {
+                timerDisplay.classList.remove('warning');
+            }
+        }
+
+        function endRound() {
+            if (!state.roundActive) return;
+            state.roundActive = false;
+            
+            if (state.timerInterval) {
+                clearInterval(state.timerInterval);
+                state.timerInterval = null;
+            }
+            
+            // 揭示答案
+            state.wordRevealed = true;
+            updateWordDisplay();
+            
+            addChatMessage(`⏰ 回合結束！答案是「${state.currentWord}」`, null, 'system');
+            
+            // 畫家得分
+            const drawer = state.players[state.currentDrawer];
+            if (drawer) {
+                const guesserCount = state.guessedThisRound.size;
+                const drawerPoints = guesserCount * 5 + 5;
+                drawer.score += drawerPoints;
+                addChatMessage(`🎨 ${drawer.name} 獲得 ${drawerPoints} 分`, null, 'system');
+            }
+            
+            updatePlayerList();
+            
+            // 同步
+            if (state.connected && (state.isHost || state.mode === 'solo')) {
+                sendData({ type: 'roundEnd', word: state.currentWord, drawerPoints: drawer?.score || 0 });
+            }
+            
+            // 檢查遊戲是否結束
+            if (state.round >= state.totalRounds) {
+                setTimeout(() => gameOver(), 2000);
+            } else {
+                // 下一回合
+                setTimeout(() => {
+                    state.round++;
+                    state.currentDrawer = (state.currentDrawer + 1) % state.players.length;
+                    
+                    // 單機模式下，如果輪到玩家自己，顯示提示
+                    if (state.mode === 'solo') {
+                        // 單機模式：如果是玩家，直接開始；如果是AI，等待一下
+                        startRound();
+                    } else if (state.connected) {
+                        // 連線模式：主機決定
+                        if (state.isHost) {
+                            sendData({ type: 'nextRound', round: state.round, drawer: state.currentDrawer });
+                        }
+                        startRound();
+                    } else {
+                        startRound();
+                    }
+                }, 2500);
+            }
+        }
+
+        function gameOver() {
+            state.gameActive = false;
+            overlayText.textContent = '🏆 遊戲結束！';
+            overlaySub.textContent = '最終分數';
+            overlay.classList.add('show');
+            
+            // 顯示排行榜
+            const sorted = [...state.players].sort((a, b) => b.score - a.score);
+            let rankingText = sorted.map((p, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '  ';
+                return `${medal} ${p.name}: ${p.score} 分`;
+            }).join('\n');
+            
+            addChatMessage('🏆 遊戲結束！\n' + rankingText, null, 'system');
+            
+            overlayBtn.textContent = '再玩一次';
+            overlayBtn.classList.remove('hidden');
+            overlayBtn.onclick = () => {
+                resetGame();
+            };
+        }
+
+        function resetGame() {
+            state.round = 1;
+            state.players.forEach(p => p.score = 0);
+            state.currentDrawer = 0;
+            state.gameActive = true;
+            overlay.classList.remove('show');
+            updatePlayerList();
+            
+            if (state.mode === 'solo') {
+                startRound();
+            } else if (state.connected) {
+                if (state.isHost) {
+                    sendData({ type: 'reset' });
+                    startRound();
+                }
+            }
+        }
+
+        // ========== AI 自動畫圖 (單機模式) ==========
+        function autoDrawForAI() {
+            if (!state.roundActive) return;
+            const word = state.currentWord;
+            
+            // 簡單的AI畫圖：畫出詞語的簡單圖案
+            const centerX = 0.5;
+            const centerY = 0.5;
+            
+            setTimeout(() => {
+                if (!state.roundActive) return;
+                
+                // 隨機畫一些線條
+                const numStrokes = 3 + Math.floor(Math.random() * 4);
+                for (let s = 0; s < numStrokes; s++) {
+                    const points = [];
+                    const startX = 0.2 + Math.random() * 0.6;
+                    const startY = 0.2 + Math.random() * 0.6;
+                    points.push({ x: startX, y: startY });
+                    
+                    const segments = 3 + Math.floor(Math.random() * 5);
+                    for (let i = 0; i < segments; i++) {
+                        points.push({
+                            x: Math.max(0.1, Math.min(0.9, points[points.length-1].x + (Math.random() - 0.5) * 0.3)),
+                            y: Math.max(0.1, Math.min(0.9, points[points.length-1].y + (Math.random() - 0.5) * 0.3))
+                        });
+                    }
+                    
+                    const stroke = {
+                        color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                        size: 5 + Math.random() * 10,
+                        eraser: false,
+                        points: points
+                    };
+                    
+                    state.canvasHistory.push(stroke);
+                    drawStroke(stroke);
+                }
+            }, 800);
+        }
+
+        // ========== 連線功能 ==========
+        function sendData(data) {
+            if (state.conn && state.conn.open) {
+                state.conn.send(data);
+            }
+        }
+
+        function handleRemoteData(data) {
+            switch (data.type) {
+                case 'draw':
+                    if (data.stroke) {
+                        drawStroke({
+                            ...data.stroke,
+                            points: data.stroke.points
+                        });
+                    }
+                    break;
+                    
+                case 'drawEnd':
+                    if (data.stroke) {
+                        state.canvasHistory.push(data.stroke);
+                    }
+                    break;
+                    
+                case 'clear':
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    state.canvasHistory = [];
+                    break;
+                    
+                case 'chat':
+                    addChatMessage(data.text, data.sender, 'normal');
+                    checkGuess(data.text, data.senderIndex, data.sender);
+                    break;
+                    
+                case 'word':
+                    state.currentWord = data.word;
+                    state.round = data.round || state.round;
+                    updateWordDisplay();
+                    break;
+                    
+                case 'guessCorrect':
+                    state.guessedThisRound.add(data.playerIndex);
+                    if (state.players[data.playerIndex]) {
+                        state.players[data.playerIndex].score += data.points;
+                    }
+                    addChatMessage(`🎉 ${data.playerName} 猜對了！ +${data.points} 分`, null, 'correct');
+                    updatePlayerList();
+                    break;
+                    
+                case 'roundEnd':
+                    endRound();
+                    break;
+                    
+                case 'nextRound':
+                    state.round = data.round;
+                    state.currentDrawer = data.drawer;
+                    startRound();
+                    break;
+                    
+                case 'playerJoin':
+                    if (!state.players.find(p => p.id === data.id)) {
+                        state.players.push({
+                            id: data.id,
+                            name: data.name,
+                            score: 0
+                        });
+                        updatePlayerList();
+                        addChatMessage(`👋 ${data.name} 加入了遊戲`, null, 'system');
+                    }
+                    break;
+                    
+                case 'playerList':
+                    // 主機同步玩家列表
+                    if (state.isHost) {
+                        sendData({ type: 'playerList', players: state.players });
+                    }
+                    break;
+                    
+                case 'reset':
+                    resetGame();
+                    break;
+                    
+                case 'gameStart':
+                    state.gameActive = true;
+                    state.players = data.players;
+                    state.currentDrawer = data.drawer;
+                    state.round = 1;
+                    state.myIndex = state.players.findIndex(p => p.id === state.myId);
+                    startRound();
+                    break;
+            }
+        }
+
+        // ========== PeerJS ==========
+        function initPeer(host) {
+            const statusEl = document.getElementById('connectionStatus');
+            
+            // 動態載入 PeerJS
+            const loadPeer = () => {
+                if (typeof Peer === 'undefined') {
+                    const script = document.createElement('script');
+                    script.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js';
+                    script.onload = () => createPeer(host);
+                    script.onerror = () => {
+                        statusEl.textContent = '無法載入 PeerJS，請檢查網路';
+                        statusEl.classList.add('error');
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    createPeer(host);
+                }
+            };
+            
+            loadPeer();
+        }
+
+        function createPeer(host) {
+            const statusEl = document.getElementById('connectionStatus');
+            
+            if (host) {
+                state.peer = new Peer(null, { debug: 1 });
+                
+                state.peer.on('open', (id) => {
+                    statusEl.textContent = `✅ 房間已建立！ID: ${id}`;
+                    statusEl.classList.remove('error');
+                    state.isHost = true;
+                    state.myId = id;
+                    connBadge.textContent = '主機';
+                    connBadge.className = 'conn-badge host';
+                    
+                    // 初始化玩家列表（只有自己）
+                    state.players = [{ id: id, name: '主機', score: 0 }];
+                    state.myIndex = 0;
+                    updatePlayerList();
+                    
+                    showToast('房間已建立，等待玩家加入...');
+                });
+                
+                state.peer.on('connection', (conn) => {
+                    state.conn = conn;
+                    state.connected = true;
+                    connBadge.textContent = '已連線';
+                    connBadge.className = 'conn-badge online';
+                    
+                    conn.on('open', () => {
+                        addChatMessage('👋 客戶端已連線', null, 'system');
+                        
+                        // 發送玩家列表
+                        conn.send({
+                            type: 'playerList',
+                            players: state.players
+                        });
+                        
+                        // 發送遊戲開始
+                        const clientName = '客戶端';
+                        state.players.push({ id: conn.peer, name: clientName, score: 0 });
+                        state.myIndex = 0;
+                        updatePlayerList();
+                        
+                        // 通知所有玩家開始遊戲
+                        conn.send({
+                            type: 'gameStart',
+                            players: state.players,
+                            drawer: state.currentDrawer
+                        });
+                        
+                        // 主機自己也開始
+                        state.gameActive = true;
+                        state.mode = 'host';
+                        document.getElementById('menu').classList.add('hidden');
+                        startRound();
+                    });
+                    
+                    conn.on('data', (data) => {
+                        handleRemoteData(data);
+                    });
+                    
+                    conn.on('close', () => {
+                        addChatMessage('❌ 客戶端已斷線', null, 'system');
+                        state.connected = false;
+                        connBadge.textContent = '已斷線';
+                        connBadge.className = 'conn-badge';
+                    });
+                });
+                
+                state.peer.on('error', (err) => {
+                    statusEl.textContent = `錯誤: ${err.message}`;
+                    statusEl.classList.add('error');
+                });
+            } else {
+                const peerId = document.getElementById('peerIdInput').value.trim();
+                if (!peerId) {
+                    statusEl.textContent = '請輸入主機 ID';
+                    statusEl.classList.add('error');
+                    return;
+                }
+                
+                state.peer = new Peer(null, { debug: 1 });
+                
+                state.peer.on('open', (id) => {
+                    state.myId = id;
+                    statusEl.textContent = '正在連線到主機...';
+                    
+                    state.conn = state.peer.connect(peerId);
+                    
+                    state.conn.on('open', () => {
+                        state.connected = true;
+                        state.mode = 'client';
+                        connBadge.textContent = '已連線';
+                        connBadge.className = 'conn-badge online';
+                        
+                        // 發送加入訊息
+                        state.conn.send({
+                            type: 'playerJoin',
+                            id: id,
+                            name: '客戶端'
+                        });
+                        
+                        // 等待主機發送 gameStart
+                        document.getElementById('menu').classList.add('hidden');
+                    });
+                    
+                    state.conn.on('data', (data) => {
+                        handleRemoteData(data);
+                    });
+                    
+                    state.conn.on('close', () => {
+                        addChatMessage('❌ 與主機的連線已斷開', null, 'system');
+                        state.connected = false;
+                        connBadge.textContent = '已斷線';
+                        connBadge.className = 'conn-badge';
+                    });
+                });
+                
+                state.peer.on('error', (err) => {
+                    statusEl.textContent = `連線錯誤: ${err.message}`;
+                    statusEl.classList.add('error');
+                });
+            }
+        }
+
+        // ========== 選單按鈕 ==========
+        document.getElementById('btnSolo').addEventListener('click', () => {
+            document.getElementById('menu').classList.add('hidden');
+            state.gameActive = true;
+            state.mode = 'solo';
+            initSoloGame();
+        });
+
+        document.getElementById('btnHost').addEventListener('click', () => {
+            document.getElementById('connectionStatus').textContent = '正在建立房間...';
+            document.getElementById('connectionStatus').classList.remove('error');
+            initPeer(true);
+        });
+
+        document.getElementById('btnJoin').addEventListener('click', () => {
+            document.getElementById('joinPanel').classList.remove('hidden');
+            document.getElementById('connectionStatus').textContent = '請輸入主機 ID';
+            document.getElementById('connectionStatus').classList.remove('error');
+        });
+
+        document.getElementById('btnConnect').addEventListener('click', () => {
+            document.getElementById('connectionStatus').textContent = '正在連線...';
+            document.getElementById('connectionStatus').classList.remove('error');
+            initPeer(false);
+        });
+
+        // ========== 初始化 ==========
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        
+        // 顯示遮罩
+        overlay.classList.add('show');
+        overlayText.textContent = '🎨 你畫我猜';
+        overlaySub.textContent = '選擇模式開始遊戲';
+
+        console.log('你畫我猜已載入');
+    </script>
+</body>
+</html>
