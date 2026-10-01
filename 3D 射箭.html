@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>3D 射箭</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--p:rgba(14,20,34,.9);--f:#fff;--a:#ffb703}
+@media (prefers-color-scheme:light){:root:not([data-theme="light"]){--p:rgba(14,20,34,.9);--f:#fff}}
+:root[data-theme="dark"]{--p:rgba(14,20,34,.9);--f:#fff}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0;background:#0b1020;overflow:hidden;font-family:system-ui,"Noto Sans TC","PingFang TC",sans-serif;touch-action:none;user-select:none}
+[hidden]{display:none!important}
+canvas{position:fixed;left:0;top:0;width:100%;height:100%;cursor:crosshair}
+.pn{position:fixed;inset:0;margin:auto;width:min(92vw,420px);height:max-content;max-height:90vh;overflow:auto;padding:20px;background:var(--p);color:var(--f);border-radius:16px;display:flex;flex-direction:column;gap:10px;text-align:center;backdrop-filter:blur(8px)}
+.pn h1,.pn h2{margin:0}.s{font-size:13px;opacity:.75;margin:0}
+button,input{font:inherit;padding:10px 14px;border-radius:10px;border:0}
+button{background:var(--a);color:#111;font-weight:700;cursor:pointer}
+input{width:100%;min-width:0;text-align:center}
+.row{display:flex;gap:6px}
+#pad{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom,0px));left:0;right:0;display:flex;justify-content:space-between;padding:0 18px;pointer-events:none}
+#pad b{pointer-events:auto;width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;color:#fff;font-size:26px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="m" class="pn">
+<h1>🏹 3D 射箭</h1>
+<p class="s">按住滑鼠 / 空白鍵拉弓，放開射擊<br>A / D 或 ← / → 左右移動（手機：拖曳瞄準、按住畫面拉弓）</p>
+<button onclick="go('cpu',.012)">單人 vs 電腦（簡單）</button>
+<button onclick="go('cpu',.006)">單人 vs 電腦（普通）</button>
+<button onclick="go('cpu',.0025)">單人 vs 電腦（困難）</button>
+<button onclick="go('local')">本機雙人（輪流）</button>
+<div class="row"><button onclick="host()" style="flex:1">線上：建立房間</button></div>
+<div class="row"><input id="code" placeholder="房間代碼" maxlength="5"><button onclick="join()">加入</button></div>
+<p class="s">線上對戰會在需要時才載入 PeerJS，離線時其他模式不受影響。</p>
+<div id="st" class="s"></div>
+</div>
+<div id="e" class="pn" hidden></div>
+<div id="pad" hidden><b id="bl">◀</b><b id="br">▶</b></div>
+<script>
+const $=id=>document.getElementById(id),C=$('c'),g=C.getContext('2d'),M=$('m'),E=$('e'),PAD=$('pad');
+let W,H;
+function rs(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;C.width=W*d;C.height=H*d;g.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',rs);rs();
+const TZ=-30,TR=1.5,TY=1.7,EYE=1.6,G=9.81,V=62,ARR=6,DT=1/120;
+const RC=['#f4f4f4','#f4f4f4','#222','#222','#2a7fd4','#2a7fd4','#e03131','#e03131','#ffd43b','#ffd43b'];
+const mb=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const nm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return[v[0]/l,v[1]/l,v[2]/l]};
+let mode='cpu',sig=.006,run=false,over=false,my=-1,peer,conn,rng=Math.random,turn=0,phase='aim',wind=0,wt=0,T=0,acc=0,slow=1,shk=0,wb=0,wbv=0,draw=0,holding=false,ay=0,ap=.04,camx=0,cz=1,fol=0,fy=0,fp=0,ci=null,ra={x:0,y:0,p:.04,d:0},sent=0,lx=0,ly=0,syw=0,spw=0,ac;
+const players=[{c:'#4fc3f7',n:'玩家1',s:0,left:ARR,x:0},{c:'#ff8a65',n:'玩家2',s:0,left:ARR,x:0}],arrows=[],pa=[],pops=[],pend=[],k={l:0,r:0};
+const R0=mb(7),trees=[],amb=[];
+for(let i=0;i<70;i++){const s=i%2?1:-1;trees.push({x:s*(9+R0()*45),z:-(6+R0()*150),h:4+R0()*5,k:R0()})}
+trees.sort((a,b)=>a.z-b.z);
+for(let i=0;i<100;i++)amb.push({x:(R0()-.5)*50,y:.3+R0()*6,z:-R0()*45,k:R0()*9});
+const nw=()=>(rng()*2-1)*3.2;
+function sfx(f,d,t,v){try{ac=ac||new AudioContext();const o=ac.createOscillator(),q=ac.createGain(),n=ac.currentTime;o.type=t||'sine';o.frequency.setValueAtTime(f,n);o.frequency.exponentialRampToValueAtTime(Math.max(30,f/3),n+d);q.gain.setValueAtTime(v||.12,n);q.gain.exponentialRampToValueAtTime(.001,n+d);o.connect(q);q.connect(ac.destination);o.start();o.stop(n+d)}catch(e){}}
+/* ---------- game flow ---------- */
+function reset(){players.forEach(p=>{p.s=0;p.left=ARR;p.x=0});arrows.length=0;pa.length=0;pops.length=0;pend.length=0;turn=0;phase='aim';wind=nw();over=false;draw=0;ci=null;ay=0;ap=.04;wb=wbv=0;E.hidden=true}
+function go(m,s){mode=m;if(s)sig=s;rng=mb(Date.now());players[0].n=m=='cpu'?'你':'玩家1';players[1].n=m=='cpu'?'電腦':'玩家2';players[1].cpu=m=='cpu';reset();run=true;M.hidden=true;PAD.hidden=false}
+function startOnline(i,sd){my=i;mode='online';rng=mb(sd);players[0].n='房主'+(i?'':'（你）');players[1].n='訪客'+(i?'（你）':'');players[1].cpu=false;reset();run=true;M.hidden=true;PAD.hidden=false}
+function menu(){run=false;over=false;E.hidden=true;M.hidden=false;PAD.hidden=true;try{peer&&peer.destroy()}catch(e){}peer=conn=null;$('st').textContent='';reset()}
+function again(){if(mode=='online'){const sd=Math.random()*1e9|0;tx({t:'s',seed:sd});startOnline(0,sd)}else{reset();run=true}}
+function endGame(){over=true;const a=players[0],b=players[1],w=a.s==b.s?'平手！':(a.s>b.s?a:b).n+' 獲勝！';
+ E.innerHTML=`<h2>${w}</h2><p>${a.n} ${a.s} : ${b.s} ${b.n}</p>`+(mode=='online'&&my==1?'<p class="s">等待房主重新開始…</p>':'<button onclick="again()">再來一局</button>')+'<button onclick="menu()">主選單</button>';E.hidden=false}
+function nextTurn(){if(players[0].left+players[1].left==0){endGame();return}turn^=1;if(!players[turn].left)turn^=1;wind=nw();phase='aim';draw=0;ci=null;ra={x:players[turn].x,y:0,p:.04,d:0}}
+const human=()=>run&&phase=='aim'&&!over&&(mode=='local'||(mode=='cpu'&&turn==0)||(mode=='online'&&turn==my));
+function fire(o,x,y,p,pw){const sp=V*(.4+.6*pw),c=Math.cos(p);
+ arrows.push({o,p:[x,EYE-.1,-.6],v:[Math.sin(y)*c*sp,Math.sin(p)*sp,-Math.cos(y)*c*sp],st:0,n:0});
+ players[o].left--;phase='fly';draw=0;holding=false;shk=.25;em(8,x,EYE-.1,-.6,1.6,'#fff',.4,.04,0,{add:1});sfx(260+pw*200,.18,'triangle',.1);
+ if(mode=='online'&&o==my)tx({t:'f',o,x,y,p,pw})}
+function solve(px){let y=Math.atan2(-px,30),p=.04;
+ for(let i=0;i<14;i++){const q=[px,EYE-.1,-.6],c=Math.cos(p),v=[Math.sin(y)*c*V,Math.sin(p)*V,-Math.cos(y)*c*V];
+  while(q[2]>TZ&&q[1]>0){v[1]-=G*.01;v[0]+=wind*.01;q[0]+=v[0]*.01;q[1]+=v[1]*.01;q[2]+=v[2]*.01}
+  y+=(0-q[0])/30;p+=(TY-q[1])/30}
+ const gs=()=>(Math.random()+Math.random()+Math.random()-1.5)*2;return[y+gs()*sig,p+gs()*sig]}
+function cpu(dt,Q){if(!ci)ci={t:0,tx:(Math.random()-.5)*12,s:null};ci.t+=dt;Q.x+=(ci.tx-Q.x)*Math.min(1,dt*2.5);
+ if(ci.t>.7&&!ci.s)ci.s=solve(ci.tx);
+ if(ci.s){const q=Math.min(1,dt*3);ay+=(ci.s[0]-ay)*q;ap+=(ci.s[1]-ap)*q}
+ draw=Math.max(0,Math.min(1,(ci.t-.9)/1.1));
+ if(ci.t>2.4){Q.x=ci.tx;fire(turn,Q.x,ay+syw,ap+spw,1);ci=null}}
+/* ---------- particles ---------- */
+function em(n,x,y,z,sp,col,life,sz,gr,o){o=o||{};for(let i=0;i<n;i++){if(pa.length>2600)pa.shift();
+ const a=Math.random()*6.283,b=Math.random()*2-1,r=Math.sqrt(1-b*b),s=sp*(.3+Math.random()*.7),L=life*(.6+Math.random()*.6);
+ pa.push({x,y,z,vx:(o.dx||0)+Math.cos(a)*r*s,vy:(o.dy||0)+b*s,vz:(o.dz||0)+Math.sin(a)*r*s,l:L,m:L,c:Array.isArray(col)?col[Math.random()*col.length|0]:col,z0:sz*(.5+Math.random()),g:gr,add:o.add,fl:o.fl})}}
+function hit(a,hx,hy,d){const rg=10-Math.floor(d/TR*10),c=RC[rg-1],sp=Math.hypot(a.v[0],a.v[1],a.v[2])/V,z=TZ+.1;
+ a.st=1;a.t=1;a.lx=hx;a.ly=hy-TY;a.dir=nm(a.v);a.hd=[hx,hy,TZ];players[a.o].s+=rg;
+ em(18+rg*6,hx,hy,z,5,[c,'#ffe9a0','#fff'],.7,.07,.6,{dz:4,add:1});
+ em(14,hx,hy,z,2.5,['#c9a66b','#e8d4a0'],1.4,.25,.03,{dz:2});
+ em(12,hx,hy,z,4,['#5b3a1a','#8b5a2b'],1.1,.09,1,{dz:3});
+ pops.push({ring:1,x:hx,y:hy,z,t:0,col:rg<3?'#ffffff':c});
+ pops.push({x:hx,y:hy+.3,z,t:0,txt:rg==10?'BULLSEYE! 10':'+'+rg,col:rg>=9?'#ffd43b':'#fff'});
+ if(rg>=9){shk=Math.max(shk,.6);em(rg==10?150:60,hx,hy,z,6,['#ff6b6b','#ffd43b','#51cf66','#4dabf7','#da77f2'],2.6,.09,.25,{dy:5,dz:2,fl:1})}
+ wbv+=1.1*sp;shk=Math.max(shk,.15+rg*.03);sfx(rg>8?520:150,.3,'triangle',.2)}
+function ground(a){a.st=1;a.t=0;a.dir=nm(a.v);a.hd=[a.p[0],0,a.p[2]];
+ em(26,a.p[0],.05,a.p[2],4,['#6b4a2b','#4a7a2a','#8a6a3a'],1,.1,1,{dy:3});
+ em(10,a.p[0],.1,a.p[2],1.5,'#b9a67a',1.8,.35,.03);
+ pops.push({x:a.p[0],y:.4,z:a.p[2],t:0,txt:'Miss',col:'#ccc'});sfx(90,.2,'sine',.2)}
+function step(){
+ for(const a of arrows){if(a.st)continue;const p0=a.p.slice();a.v[1]-=G*DT;a.v[0]+=wind*DT;for(let i=0;i<3;i++)a.p[i]+=a.v[i]*DT;a.n++;
+  if(a.n%2==0)em(1,a.p[0],a.p[1],a.p[2],.15,'#fff',.45,.05,0);
+  if(p0[2]>TZ&&a.p[2]<=TZ){const t=(p0[2]-TZ)/(p0[2]-a.p[2]),hx=p0[0]+(a.p[0]-p0[0])*t,hy=p0[1]+(a.p[1]-p0[1])*t,d=Math.hypot(hx,hy-TY);if(d<=TR){hit(a,hx,hy,d);continue}}
+  if(a.p[1]<=0)ground(a);else if(a.p[2]<-140){a.st=1;a.t=0;a.dir=nm(a.v);a.hd=[a.p[0],0,a.p[2]]}}
+ wbv+=(-70*wb-3*wbv)*DT;wb+=wbv*DT;
+ for(let i=pa.length-1;i>=0;i--){const q=pa[i];if((q.l-=DT)<=0){pa[i]=pa[pa.length-1];pa.pop();continue}
+  const d=1-DT*(q.fl?3:.8);q.vy-=G*q.g*DT;q.vx+=wind*DT*.5;q.vx*=d;q.vy*=d;q.vz*=d;if(q.fl)q.vx+=Math.sin(q.l*9+i)*.05;
+  q.x+=q.vx*DT;q.y+=q.vy*DT;q.z+=q.vz*DT;if(q.y<0&&q.g>0){q.y=0;q.vy*=-.35;q.vx*=.6;q.vz*=.6}}
+ for(const q of amb){q.x+=(wind*.35+Math.sin(T+q.k)*.15)*DT*3;q.y+=Math.sin(T*.7+q.k*3)*.1*DT;q.z+=Math.cos(T*.5+q.k)*.1*DT;if(q.x>26)q.x=-26;if(q.x<-26)q.x=26}}
+function update(dt){
+ T+=dt;shk*=Math.pow(.02,dt);const Q=players[turn];
+ syw=Math.sin(T*1.7)*.0035*(1+draw)+Math.sin(T*.6)*.002;spw=Math.cos(T*1.3)*.003*(1+draw);
+ if(run&&!over){
+  if(pend.length&&phase=='aim'&&turn==pend[0].o){const m=pend.shift();Q.x=m.x;fire(m.o,m.x,m.y,m.p,m.pw)}
+  if(phase=='aim'){
+   if(human()){Q.x=Math.max(-7,Math.min(7,Q.x+(k.r-k.l)*5*dt));draw=holding?Math.min(1,draw+dt/1.1):0;
+    if(mode=='online'&&T-sent>.08){sent=T;tx({t:'a',x:Q.x,y:ay,p:ap,d:draw})}}
+   else if(Q.cpu)cpu(dt,Q);
+   else{const q=Math.min(1,dt*8);Q.x+=(ra.x-Q.x)*q;ay+=(ra.y-ay)*q;ap+=(ra.p-ap)*q;draw+=(ra.d-draw)*q}
+  }else if(phase=='fly'){if(!arrows.some(a=>!a.st)){phase='wait';wt=1.6}}
+  else if(phase=='wait'){wt-=dt;if(wt<=0)nextTurn()}}
+ for(let i=pops.length-1;i>=0;i--){pops[i].t+=dt;if(pops[i].t>1.8)pops.splice(i,1)}
+ let ts=1;for(const a of arrows)if(!a.st&&a.p[2]<TZ+7&&a.p[2]>TZ&&Math.hypot(a.p[0],a.p[1]-TY)<TR*1.4)ts=.22;
+ slow+=(ts-slow)*Math.min(1,dt*10);acc+=dt*slow;while(acc>=DT){step();acc-=DT}
+ camx+=(Q.x-camx)*Math.min(1,dt*6);
+ const fa=arrows[arrows.length-1];let tf=0;
+ if(phase!='aim'&&fa){tf=1;let X,Y,Z;if(!fa.st){X=fa.p[0]+fa.v[0]*.15;Y=fa.p[1]+fa.v[1]*.15;Z=fa.p[2]+fa.v[2]*.15}else{X=fa.hd[0];Y=fa.hd[1];Z=fa.hd[2]}
+  const dx=X-camx;fy=Math.atan2(dx,-Z);fp=Math.atan2(Y-EYE,Math.hypot(dx,Z))}
+ fol+=(tf-fol)*Math.min(1,dt*(tf?7:3));
+ cz+=((phase=='aim'?1+1.6*draw:2.2)-cz)*Math.min(1,dt*6)}
+/* ---------- rendering ---------- */
+let cx_,cf,Cy,Sy,Cp,Sp,cyaw,cpit;
+function qc(x,y,z){const dx=x-cx_,dy=y-EYE,x1=dx*Cy+z*Sy,z1=-dx*Sy+z*Cy;return[x1,dy*Cp+z1*Sp,dy*Sp-z1*Cp]}
+function pj(x,y,z){const q=qc(x,y,z);return[W/2+cf*q[0]/q[2],H/2-cf*q[1]/q[2],q[2]]}
+function L(a,b,col,w){let A=qc(a[0],a[1],a[2]),B=qc(b[0],b[1],b[2]);if(A[2]<.3&&B[2]<.3)return;
+ if(A[2]<.3){const t=(.3-A[2])/(B[2]-A[2]);A=A.map((v,i)=>v+(B[i]-v)*t)}else if(B[2]<.3){const t=(.3-B[2])/(A[2]-B[2]);B=B.map((v,i)=>v+(A[i]-v)*t)}
+ g.strokeStyle=col;g.lineWidth=Math.max(w?1.6:1,w*cf/((A[2]+B[2])/2));g.beginPath();g.moveTo(W/2+cf*A[0]/A[2],H/2-cf*A[1]/A[2]);g.lineTo(W/2+cf*B[0]/B[2],H/2-cf*B[1]/B[2]);g.stroke()}
+function tw(x,y,z){const dy=y-TY,dz=z-TZ,c=Math.cos(wb),s=Math.sin(wb);return[x,TY+dy*c-dz*s,TZ+dy*s+dz*c]}
+function disc(r,col,z){g.fillStyle=col;g.beginPath();for(let i=0;i<=28;i++){const a=i/28*6.283,p=pj(...tw(Math.cos(a)*r,TY+Math.sin(a)*r,z));if(p[2]<.3)return;i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])}g.fill();g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=1;g.stroke()}
+function AR(h,t,col){L(t,h,'#e8dcb8',.04);L(t,[t[0]+(h[0]-t[0])*.16,t[1]+(h[1]-t[1])*.16,t[2]+(h[2]-t[2])*.16],col,.09)}
+function render(){
+ cx_=camx;cf=Math.max(H,W*.55)*.9*cz;cyaw=(ay+syw)*(1-fol)+fy*fol;cpit=(ap+spw)*(1-fol)+fp*fol;
+ Cy=Math.cos(cyaw);Sy=Math.sin(cyaw);Cp=Math.cos(cpit);Sp=Math.sin(cpit);
+ g.save();if(shk>.01)g.translate((Math.random()-.5)*shk*16,(Math.random()-.5)*shk*16);
+ const hy=H/2+cf*Math.tan(cpit);
+ let gr=g.createLinearGradient(0,hy-cf*.6,0,hy);gr.addColorStop(0,'#2d6cb0');gr.addColorStop(1,'#cfe8f6');g.fillStyle=gr;g.fillRect(-20,-20,W+40,Math.max(0,hy+20));
+ const sn=pj(150,100,-400);if(sn[2]>1){gr=g.createRadialGradient(sn[0],sn[1],0,sn[0],sn[1],cf*.12);gr.addColorStop(0,'rgba(255,248,210,1)');gr.addColorStop(.25,'rgba(255,240,180,.7)');gr.addColorStop(1,'rgba(255,240,180,0)');g.fillStyle=gr;g.fillRect(sn[0]-cf*.12,sn[1]-cf*.12,cf*.24,cf*.24)}
+ const ridge=(z,amp,col,ph)=>{g.fillStyle=col;g.beginPath();g.moveTo(-50,hy+4);for(let x=-420;x<=420;x+=30){const h=amp*(.55+.3*Math.sin(x*.021+ph)+.25*Math.sin(x*.057+ph*2.1)),p=pj(x,h,z);if(p[2]>1)g.lineTo(p[0],p[1])}g.lineTo(W+50,hy+4);g.fill()};
+ ridge(-380,70,'#9bb8d3',1);ridge(-250,45,'#7f9fbd',4);
+ gr=g.createLinearGradient(0,hy,0,hy+H*.6);gr.addColorStop(0,'#8cb877');gr.addColorStop(1,'#2f5d2a');g.fillStyle=gr;g.fillRect(-20,hy,W+40,H-hy+20);
+ for(let i=1;i<=30;i++)L([-60,0,-i*5],[60,0,-i*5],'rgba(255,255,255,.08)',0);
+ for(let x=-40;x<=40;x+=5)L([x,0,-1],[x,0,-160],'rgba(255,255,255,.07)',0);
+ L([-9,0,-1.5],[9,0,-1.5],'rgba(255,255,255,.5)',0);
+ for(const t of trees){const b=pj(t.x,0,t.z),u=pj(t.x,t.h,t.z);if(b[2]<2)continue;const s=cf/b[2],hh=b[1]-u[1];
+  g.fillStyle='#4a3320';g.fillRect(b[0]-t.h*.03*s,u[1]+hh*.55,t.h*.06*s,hh*.45);
+  g.fillStyle=`hsl(${130+t.k*20},35%,${12+Math.min(28,b[2]/5)}%)`;
+  for(let j=0;j<3;j++){const y0=u[1]+hh*j*.2,hw=t.h*(.12+.07*j)*s;g.beginPath();g.moveTo(b[0],y0);g.lineTo(b[0]+hw,y0+hh*.4);g.lineTo(b[0]-hw,y0+hh*.4);g.fill()}}
+ L([-1,0,TZ-.8],[-.3,TY-.5,TZ-.1],'#5a3d22',.14);L([1,0,TZ-.8],[.3,TY-.5,TZ-.1],'#5a3d22',.14);L([0,0,TZ-1.6],[0,TY-.4,TZ-.2],'#4a3320',.12);
+ disc(TR*1.1,'#7a5430',TZ-.05);for(let r=1;r<=10;r++)disc(TR*(11-r)/10,RC[r-1],TZ+.005*r);
+ for(const a of arrows){let h,t;
+  if(!a.st){h=a.p;const d=nm(a.v);t=[h[0]-d[0]*.9,h[1]-d[1]*.9,h[2]-d[2]*.9]}
+  else if(a.t){h=tw(a.lx,TY+a.ly,TZ+.1);t=tw(a.lx-a.dir[0]*.9,TY+a.ly-a.dir[1]*.9,TZ+.1-a.dir[2]*.9)}
+  else{h=[a.hd[0],-.05,a.hd[2]];t=[h[0]-a.dir[0]*.9,h[1]-a.dir[1]*.9,h[2]-a.dir[2]*.9]}
+  AR(h,t,players[a.o].c)}
+ for(let pass=0;pass<2;pass++){g.globalCompositeOperation=pass?'lighter':'source-over';
+  if(pass){g.fillStyle='rgba(255,250,200,.5)';for(const q of amb){const p=pj(q.x,q.y,q.z);if(p[2]<.5)continue;const s=Math.max(1.2,.07*cf/p[2]);g.fillRect(p[0],p[1],s,s)}}
+  for(const q of pa){if(!!q.add!=!!pass)continue;const p=pj(q.x,q.y,q.z);if(p[2]<.4)continue;const s=Math.max(1.2,q.z0*cf/p[2]);g.globalAlpha=Math.min(1,q.l/q.m*1.5);g.fillStyle=q.c;g.fillRect(p[0]-s/2,p[1]-s/2,s,s)}}
+ g.globalAlpha=1;g.globalCompositeOperation='source-over';
+ for(const o of pops){const p=pj(o.x,o.y+(o.ring?0:o.t*1.3),o.z);if(p[2]<.5)continue;const s=cf/p[2];
+  if(o.ring){g.strokeStyle=o.col;g.globalAlpha=Math.max(0,1-o.t/.7);g.lineWidth=3;g.beginPath();g.arc(p[0],p[1],o.t*4*s,0,6.283);g.stroke()}
+  else{g.globalAlpha=Math.max(0,1-o.t/1.8);g.font=`bold ${Math.max(20,Math.min(72,1.1*s))|0}px system-ui`;g.fillStyle=o.col;g.strokeStyle='#000';g.lineWidth=4;g.textAlign='center';g.textBaseline='middle';g.strokeText(o.txt,p[0],p[1]);g.fillText(o.txt,p[0],p[1])}
+  g.globalAlpha=1}
+ g.restore();
+ if(cz>1.15){gr=g.createRadialGradient(W/2,H/2,Math.min(W,H)*.25,W/2,H/2,Math.max(W,H)*.7);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,`rgba(0,0,0,${Math.min(.6,(cz-1)*.4)})`);g.fillStyle=gr;g.fillRect(0,0,W,H)}
+ if(phase=='aim'){bow();g.strokeStyle='rgba(255,255,255,.85)';g.lineWidth=1.5;g.beginPath();g.arc(W/2,H/2,9,0,6.283);g.moveTo(W/2-18,H/2);g.lineTo(W/2-5,H/2);g.moveTo(W/2+5,H/2);g.lineTo(W/2+18,H/2);g.moveTo(W/2,H/2-18);g.lineTo(W/2,H/2-5);g.moveTo(W/2,H/2+5);g.lineTo(W/2,H/2+18);g.stroke()}
+ hud()}
+function bow(){const s=Math.min(W,H),gx=W/2-.16*s,gy=H*.8,N=[gx+.04*s+draw*.2*s,gy+draw*.02*s],tip=[W/2-.008*s,H/2+.04*s];
+ g.save();g.lineCap='round';g.strokeStyle='#6b4423';g.lineWidth=7;g.beginPath();g.moveTo(gx+.03*s,gy-.42*s);g.quadraticCurveTo(gx-.14*s,gy-.12*s,gx-.02*s,gy);g.quadraticCurveTo(gx-.14*s,gy+.12*s,gx+.03*s,gy+.42*s);g.stroke();
+ g.strokeStyle='rgba(240,240,240,.85)';g.lineWidth=1.5;g.beginPath();g.moveTo(gx+.03*s,gy-.42*s);g.lineTo(N[0],N[1]);g.lineTo(gx+.03*s,gy+.42*s);g.stroke();
+ g.strokeStyle='#e6d9b0';g.lineWidth=3;g.beginPath();g.moveTo(N[0],N[1]);g.lineTo(tip[0],tip[1]);g.stroke();
+ g.strokeStyle=players[turn].c;g.lineWidth=5;g.beginPath();g.moveTo(N[0],N[1]);g.lineTo(N[0]+(tip[0]-N[0])*.12,N[1]+(tip[1]-N[1])*.12);g.stroke();g.restore()}
+function hud(){
+ g.textBaseline='top';g.shadowColor='#000';g.shadowBlur=4;
+ players.forEach((p,i)=>{const x=i?W-14:14;g.textAlign=i?'right':'left';g.fillStyle=p.c;g.font='bold 16px system-ui';g.fillText((i==turn&&run&&!over?'▶ ':'')+p.n,x,12);g.fillStyle='#fff';g.font='bold 38px system-ui';g.fillText(p.s,x,32);g.font='14px system-ui';g.fillText('🏹 '+p.left,x,76)});
+ g.textAlign='center';g.fillStyle='#fff';g.font='bold 15px system-ui';g.fillText(`風 ${wind<0?'◀':'▶'} ${Math.abs(wind).toFixed(1)} m/s　靶距 ${-TZ} m`,W/2,12);
+ const wl=wind*18,sg=Math.sign(wind);g.strokeStyle='#fff';g.fillStyle='#fff';g.lineWidth=3;g.beginPath();g.moveTo(W/2,42);g.lineTo(W/2+wl,42);g.stroke();g.beginPath();g.moveTo(W/2+wl,42);g.lineTo(W/2+wl-sg*9,36);g.lineTo(W/2+wl-sg*9,48);g.fill();
+ let msg='';if(run&&!over&&phase=='aim')msg=human()?(mode=='online'?'輪到你':players[turn].n+' 的回合')+(draw?'':'　按住拉弓、放開射擊'):(players[turn].cpu?'電腦瞄準中…':'對手回合');
+ g.font='bold 15px system-ui';g.fillText(msg,W/2,62);
+ if(draw>0&&phase=='aim'){const bw=Math.min(240,W*.5),y=H-40-env_b();g.fillStyle='rgba(0,0,0,.5)';g.fillRect(W/2-bw/2,y,bw,10);g.fillStyle=`hsl(${120-draw*120},80%,55%)`;g.fillRect(W/2-bw/2,y,bw*draw,10)}
+ g.shadowBlur=0}
+const env_b=()=>0;
+let last=performance.now();
+function loop(n){const dt=Math.min(.05,(n-last)/1000);last=n;update(dt);render();requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+/* ---------- input ---------- */
+function aimIn(e){if(!human())return;
+ if(e.pointerType=='mouse'||e.pointerType=='pen'){ay=(e.clientX/W-.5)*1.1;ap=(.5-e.clientY/H)*.8+.05}
+ else if(e.type=='pointermove'){ay+=(e.clientX-lx)/W*1.1/cz;ap-=(e.clientY-ly)/H*.8/cz}
+ ay=Math.max(-.5,Math.min(.5,ay));ap=Math.max(-.15,Math.min(.45,ap))}
+function rel(){if(!holding)return;holding=false;if(human()&&draw>.12)fire(turn,players[turn].x,ay+syw,ap+spw,draw);else draw=0}
+C.onpointerdown=e=>{aimIn(e);if(human()){holding=true;sfx(180,.15,'triangle',.05)}lx=e.clientX;ly=e.clientY;try{C.setPointerCapture(e.pointerId)}catch(x){}};
+C.onpointermove=e=>{aimIn(e);lx=e.clientX;ly=e.clientY};
+C.onpointerup=C.onpointercancel=rel;
+addEventListener('keydown',e=>{const c=e.code;if(c=='KeyA'||c=='ArrowLeft')k.l=1;if(c=='KeyD'||c=='ArrowRight')k.r=1;if(c=='Space'){e.preventDefault();if(!e.repeat&&human())holding=true}});
+addEventListener('keyup',e=>{const c=e.code;if(c=='KeyA'||c=='ArrowLeft')k.l=0;if(c=='KeyD'||c=='ArrowRight')k.r=0;if(c=='Space')rel()});
+[['bl','l'],['br','r']].forEach(([id,key])=>{const b=$(id);b.onpointerdown=()=>k[key]=1;b.onpointerup=b.onpointerleave=b.onpointercancel=()=>k[key]=0});
+/* ---------- online (PeerJS, loaded on demand) ---------- */
+const tx=m=>{try{conn&&conn.open&&conn.send(m)}catch(e){}};
+const st=t=>$('st').textContent=t;
+function loadPeer(cb){if(window.Peer)return cb();const u=['https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js','https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js'];let i=0;
+ (function n(){if(i>=u.length)return cb('無法載入 PeerJS（可能沒有網路）');const s=document.createElement('script');s.src=u[i++];s.onload=()=>cb();s.onerror=n;document.head.appendChild(s)})()}
+function setup(){conn.on('data',onData);conn.on('close',()=>{if(run&&mode=='online'){menu();st('對手已離線')}})}
+function onData(m){if(m.t=='s')startOnline(1,m.seed);else if(m.t=='a'&&turn!=my)ra=m;else if(m.t=='f')pend.push(m)}
+function host(){st('連線中…');loadPeer(e=>{if(e)return st(e);const id=Math.random().toString(36).slice(2,7);peer=new Peer('arc'+id);
+ peer.on('open',()=>st('房間代碼：'+id+'　等待對手加入…'));
+ peer.on('connection',c=>{conn=c;setup();c.on('open',()=>{const sd=Math.random()*1e9|0;c.send({t:'s',seed:sd});startOnline(0,sd)})});
+ peer.on('error',x=>st('連線錯誤：'+x.type))})}
+function join(){const code=$('code').value.trim().toLowerCase();if(!code)return st('請輸入房間代碼');st('連線中…');
+ loadPeer(e=>{if(e)return st(e);peer=new Peer();peer.on('open',()=>{conn=peer.connect('arc'+code,{reliable:true});setup();st('等待房主開始…')});peer.on('error',x=>st('連線錯誤：'+x.type))})}
+</script></body></html>
