@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>像素鳥 · 單文件版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: #1a1e2c;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .game-container {
+            background: #0f1219;
+            padding: 20px;
+            border-radius: 24px;
+            box-shadow: 0 12px 0 #080a0e, 0 20px 30px rgba(0,0,0,0.6);
+        }
+        canvas {
+            display: block;
+            width: 360px;
+            height: 640px;
+            border-radius: 16px;
+            image-rendering: crisp-edges; 
+            image-rendering: pixelated;
+            background: #70c5ce;
+            box-shadow: inset 0 0 0 2px #3b2e1e, 0 0 0 4px #5a4a32;
+        }
+        .info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 16px;
+            color: #b8c7e0;
+            font-weight: bold;
+            font-size: 18px;
+            text-shadow: 2px 2px 0 #0a0c10;
+            padding: 0 8px;
+        }
+        .info span {
+            background: #1e2537;
+            padding: 6px 16px;
+            border-radius: 40px;
+            border-bottom: 4px solid #0b0e14;
+            letter-spacing: 1px;
+        }
+        .restart-btn {
+            background: #f0c45a;
+            border: none;
+            border-bottom: 6px solid #a67c2e;
+            color: #2b1f0c;
+            font-weight: bold;
+            font-size: 18px;
+            padding: 8px 22px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: 0.08s linear;
+            text-shadow: 1px 1px 0 #ffeaa6;
+            letter-spacing: 1px;
+        }
+        .restart-btn:active {
+            border-bottom-width: 2px;
+            transform: translateY(4px);
+            background: #e0b04a;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="360" height="640"></canvas>
+        <div class="info">
+            <span>🏆 <span id="scoreDisplay">0</span></span>
+            <span>🐦 <span id="bestDisplay">0</span></span>
+            <button class="restart-btn" id="restartButton">▶ 重來</button>
+        </div>
+    </div>
+    <script>
+        (function() {
+            // ---------- 像素鳥 · 單文件遊戲 ----------
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            // 像素風格：關閉平滑
+            ctx.imageSmoothingEnabled = false;
+            
+            // 顯示元素
+            const scoreSpan = document.getElementById('scoreDisplay');
+            const bestSpan = document.getElementById('bestDisplay');
+            
+            // 固定尺寸 (像素)
+            const W = 360;
+            const H = 640;
+            
+            // 遊戲狀態
+            let gameState = 'ready';      // 'ready', 'playing', 'gameover'
+            let score = 0;
+            let bestScore = 0;
+            
+            // 鳥的物理屬性
+            const bird = {
+                x: 80,
+                y: H / 2,
+                width: 28,               // 像素鳥身寬高 (碰撞箱稍小)
+                height: 24,
+                gravity: 0.35,
+                jumpPower: -6.2,
+                velocity: 0,
+                rotation: 0               // 僅視覺
+            };
+            
+            // 管道設定
+            const pipeConfig = {
+                width: 52,                // 管道寬度
+                gap: 135,                 // 上下缺口高度
+                speed: 2.3,               // 每幀移動速度
+                spawnInterval: 95,        // 每多少幀生成一對
+                minTopHeight: 60,         // 頂部管道最小高度
+                maxTopHeight: 380,        // 頂部管道最大高度 (H - gap - bottomMin)
+            };
+            
+            let pipes = [];               // 管道數组 { x, topHeight, passed }
+            let frameCounter = 0;
+            let animationFrame = null;
+            
+            // 地面高度 (用於視覺)
+            const GROUND_HEIGHT = 80;
+            
+            // ----- 輔助函數 -----
+            function resetGame() {
+                gameState = 'ready';
+                score = 0;
+                bird.y = H / 2;
+                bird.velocity = 0;
+                bird.rotation = 0;
+                pipes = [];
+                frameCounter = 0;
+                updateScoreDisplay();
+                // 確保畫布繪製一次 ready 狀態
+                draw();
+            }
+            
+            // 開始遊戲 (從 ready 或 gameover 轉為 playing)
+            function startGame() {
+                if (gameState === 'playing') return;
+                // 若 gameover 則重置，若 ready 則直接開始
+                if (gameState === 'gameover') {
+                    resetGame();
+                }
+                gameState = 'playing';
+                bird.velocity = bird.jumpPower * 0.8; // 輕微起跳感
+                bird.rotation = 0;
+                // 重置計數器讓管道盡快出現 (但不會立即出現)
+                frameCounter = 0;
+                // 避免舊管道殘留
+                pipes = [];
+                // 立即繪製一次讓玩家看到鳥跳起
+                draw();
+            }
+            
+            // 跳躍 (點擊/觸控)
+            function flap() {
+                if (gameState === 'ready') {
+                    startGame();
+                } else if (gameState === 'playing') {
+                    bird.velocity = bird.jumpPower;
+                } else if (gameState === 'gameover') {
+                    // 遊戲結束後點擊也可重新開始，但按鈕更明顯；但這裡也允許
+                    resetGame();
+                    startGame();
+                }
+            }
+            
+            // 更新分數顯示
+            function updateScoreDisplay() {
+                scoreSpan.textContent = score;
+                bestSpan.textContent = bestScore;
+            }
+            
+            // ----- 碰撞檢測 (矩形) -----
+            function checkCollision(pipe) {
+                // 鳥的碰撞箱 (稍微縮小一點，更友善)
+                const birdLeft = bird.x - bird.width/2 + 4;
+                const birdRight = bird.x + bird.width/2 - 4;
+                const birdTop = bird.y - bird.height/2 + 3;
+                const birdBottom = bird.y + bird.height/2 - 3;
+                
+                // 管道左/右
+                const pipeLeft = pipe.x;
+                const pipeRight = pipe.x + pipeConfig.width;
+                
+                // 若鳥在管道水平範圍內
+                if (birdRight > pipeLeft && birdLeft < pipeRight) {
+                    // 上管道高度 = pipe.topHeight
+                    // 下管道起始Y = pipe.topHeight + pipeConfig.gap
+                    const topPipeBottom = pipe.topHeight;
+                    const bottomPipeTop = pipe.topHeight + pipeConfig.gap;
+                    
+                    // 如果鳥的頂部小於上管道底部 或 鳥的底部大於下管道頂部 => 碰撞
+                    if (birdTop < topPipeBottom || birdBottom > bottomPipeTop) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+            // ----- 更新邏輯 (playing 狀態) -----
+            function updatePlaying() {
+                // 1. 鳥物理
+                bird.velocity += bird.gravity;
+                bird.y += bird.velocity;
+                
+                // 視覺旋轉 (根據速度)
+                if (bird.velocity < 0) {
+                    bird.rotation = Math.max(-0.4, bird.velocity * 0.1);
+                } else {
+                    bird.rotation = Math.min(1.2, bird.velocity * 0.15);
+                }
+                
+                // 邊界碰撞 (上方 / 下方)
+                const birdTop = bird.y - bird.height/2;
+                const birdBottom = bird.y + bird.height/2;
+                if (birdBottom >= H - GROUND_HEIGHT) {
+                    // 撞地
+                    gameOver();
+                    return;
+                }
+                if (birdTop <= 0) {
+                    // 撞天花板 (可選：反彈或是直接結束，這裡採用結束)
+                    gameOver();
+                    return;
+                }
+                
+                // 2. 管道生成
+                frameCounter++;
+                if (frameCounter >= pipeConfig.spawnInterval) {
+                    frameCounter = 0;
+                    // 隨機頂部管道高度
+                    const topHeight = Math.floor(
+                        Math.random() * (pipeConfig.maxTopHeight - pipeConfig.minTopHeight + 1) + pipeConfig.minTopHeight
+                    );
+                    pipes.push({
+                        x: W,
+                        topHeight: topHeight,
+                        passed: false
+                    });
+                }
+                
+                // 3. 移動管道 & 碰撞檢測 & 得分
+                for (let i = pipes.length - 1; i >= 0; i--) {
+                    const pipe = pipes[i];
+                    pipe.x -= pipeConfig.speed;
+                    
+                    // 碰撞檢測 (只有 playing 才檢測，但已經在 playing)
+                    if (checkCollision(pipe)) {
+                        gameOver();
+                        return;
+                    }
+                    
+                    // 得分：鳥飛過管道右側且尚未標記 passed
+                    if (!pipe.passed && pipe.x + pipeConfig.width < bird.x) {
+                        pipe.passed = true;
+                        score++;
+                        if (score > bestScore) {
+                            bestScore = score;
+                        }
+                        updateScoreDisplay();
+                    }
+                    
+                    // 移除超出左邊的管道
+                    if (pipe.x + pipeConfig.width < 0) {
+                        pipes.splice(i, 1);
+                    }
+                }
+                
+                // 更新最佳分數顯示 (以防萬一)
+                if (bestScore > parseInt(bestSpan.textContent)) {
+                    bestSpan.textContent = bestScore;
+                }
+            }
+            
+            // ----- 遊戲結束 -----
+            function gameOver() {
+                if (gameState === 'gameover') return;
+                gameState = 'gameover';
+                // 更新最佳分數
+                if (score > bestScore) {
+                    bestScore = score;
+                }
+                updateScoreDisplay();
+                // 讓鳥稍微下墜一點的視覺(但已經結束)
+            }
+            
+            // ----- 繪製像素風格圖形 -----
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+                
+                // 天空漸層 (復古像素感)
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, H - GROUND_HEIGHT);
+                skyGrad.addColorStop(0, '#8fd6e8');
+                skyGrad.addColorStop(0.7, '#70c5ce');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, W, H - GROUND_HEIGHT);
+                
+                // 像素雲朵 (靜態裝飾)
+                ctx.fillStyle = '#f0f8ff';
+                // 雲1
+                ctx.fillRect(60, 80, 40, 20);
+                ctx.fillRect(70, 65, 30, 20);
+                ctx.fillRect(40, 95, 60, 18);
+                // 雲2
+                ctx.fillRect(240, 160, 56, 22);
+                ctx.fillRect(260, 142, 30, 24);
+                ctx.fillRect(220, 180, 80, 20);
+                // 雲3 (小)
+                ctx.fillRect(300, 50, 30, 16);
+                ctx.fillRect(315, 38, 20, 18);
+                
+                // 繪製管道 (像素風格)
+                pipes.forEach(pipe => {
+                    const pipeX = pipe.x;
+                    const pipeW = pipeConfig.width;
+                    const topH = pipe.topHeight;
+                    const bottomY = topH + pipeConfig.gap;
+                    
+                    // 上管道
+                    ctx.fillStyle = '#5f9c3c';
+                    ctx.fillRect(pipeX, 0, pipeW, topH);
+                    // 上管道亮部
+                    ctx.fillStyle = '#7fb35a';
+                    ctx.fillRect(pipeX, 0, 8, topH);
+                    ctx.fillRect(pipeX + pipeW - 8, 0, 8, topH);
+                    // 管口裝飾
+                    ctx.fillStyle = '#3e6b2b';
+                    ctx.fillRect(pipeX - 4, topH - 16, pipeW + 8, 16);
+                    ctx.fillStyle = '#7fb35a';
+                    ctx.fillRect(pipeX - 4, topH - 16, 8, 16);
+                    
+                    // 下管道
+                    ctx.fillStyle = '#5f9c3c';
+                    ctx.fillRect(pipeX, bottomY, pipeW, H - GROUND_HEIGHT - bottomY);
+                    // 亮部
+                    ctx.fillStyle = '#7fb35a';
+                    ctx.fillRect(pipeX, bottomY, 8, H - GROUND_HEIGHT - bottomY);
+                    ctx.fillRect(pipeX + pipeW - 8, bottomY, 8, H - GROUND_HEIGHT - bottomY);
+                    // 管口裝飾
+                    ctx.fillStyle = '#3e6b2b';
+                    ctx.fillRect(pipeX - 4, bottomY, pipeW + 8, 16);
+                    ctx.fillStyle = '#7fb35a';
+                    ctx.fillRect(pipeX - 4, bottomY, 8, 16);
+                });
+                
+                // 繪製地面 (像素草地)
+                ctx.fillStyle = '#4a8c3f';
+                ctx.fillRect(0, H - GROUND_HEIGHT, W, GROUND_HEIGHT);
+                ctx.fillStyle = '#2f6b2a';
+                // 草地紋理
+                for (let i = 0; i < W; i += 20) {
+                    ctx.fillRect(i, H - GROUND_HEIGHT, 10, 8);
+                    ctx.fillRect(i + 10, H - GROUND_HEIGHT + 12, 10, 8);
+                }
+                ctx.fillStyle = '#b58b4b';
+                ctx.fillRect(0, H - GROUND_HEIGHT + 24, W, GROUND_HEIGHT - 24);
+                // 泥土細節
+                ctx.fillStyle = '#8b623b';
+                for (let i = 0; i < W; i += 16) {
+                    ctx.fillRect(i, H - GROUND_HEIGHT + 34, 8, 6);
+                    ctx.fillRect(i + 8, H - GROUND_HEIGHT + 52, 8, 6);
+                }
+                
+                // 繪製鳥 (像素風格) - 帶有旋轉
+                ctx.save();
+                ctx.translate(bird.x, bird.y);
+                ctx.rotate(bird.rotation);
+                
+                // 身體 (黃色小鳥)
+                ctx.fillStyle = '#f7d51d';
+                ctx.fillRect(-12, -10, 24, 20);   // 主體
+                // 翅膀
+                ctx.fillStyle = '#e0b010';
+                ctx.fillRect(-8, -4, 12, 10);
+                // 眼睛
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(4, -8, 8, 8);
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(8, -6, 4, 6);
+                // 嘴巴 (橘色)
+                ctx.fillStyle = '#f08020';
+                ctx.fillRect(12, -2, 8, 6);
+                ctx.fillStyle = '#c06010';
+                ctx.fillRect(16, 0, 4, 4);
+                // 腮紅/裝飾
+                ctx.fillStyle = '#e09030';
+                ctx.fillRect(-2, 2, 6, 4);
+                
+                ctx.restore();
+                
+                // 狀態文字 (ready / gameover)
+                if (gameState === 'ready') {
+                    ctx.font = 'bold 28px "Courier New", Courier, monospace';
+                    ctx.fillStyle = '#1e2b3a';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = '#b0d0e0';
+                    ctx.shadowBlur = 0;
+                    ctx.shadowOffsetX = 3;
+                    ctx.shadowOffsetY = 3;
+                    ctx.fillText('像素鳥', W/2, 200);
+                    ctx.font = 'bold 18px "Courier New", Courier, monospace';
+                    ctx.fillStyle = '#2f4057';
+                    ctx.fillText('點擊 / 觸控 起飛', W/2, 280);
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                    ctx.shadowColor = 'transparent';
+                } else if (gameState === 'gameover') {
+                    ctx.font = 'bold 30px "Courier New", Courier, monospace';
+                    ctx.fillStyle = '#3a1a1a';
+                    ctx.textAlign = 'center';
+                    ctx.shadowColor = '#f0b0a0';
+                    ctx.shadowOffsetX = 3;
+                    ctx.shadowOffsetY = 3;
+                    ctx.fillText('GAME OVER', W/2, 260);
+                    ctx.font = 'bold 22px "Courier New", Courier, monospace';
+                    ctx.fillStyle = '#1a1f2e';
+                    ctx.fillText('點擊重來', W/2, 340);
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                    ctx.shadowColor = 'transparent';
+                }
+                
+                // 分數顯示 (畫布左上角，額外)
+                ctx.font = 'bold 32px "Courier New", Courier, monospace';
+                ctx.fillStyle = '#2b2b2b';
+                ctx.textAlign = 'left';
+                ctx.shadowColor = '#f0e68c';
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+                ctx.fillText(score, 24, 70);
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.shadowColor = 'transparent';
+            }
+            
+            // ----- 主迴圈 (基於 requestAnimationFrame) -----
+            function gameLoop() {
+                if (gameState === 'playing') {
+                    updatePlaying();
+                }
+                // 只有 playing 需要每幀更新物理，其餘狀態靜態繪製
+                draw();
+                animationFrame = requestAnimationFrame(gameLoop);
+            }
+            
+            // ----- 事件監聽 -----
+            // 畫布點擊 / 觸控
+            canvas.addEventListener('click', (e) => {
+                e.preventDefault();
+                flap();
+            });
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                flap();
+            }, { passive: false });
+            
+            // 按鈕重來
+            document.getElementById('restartButton').addEventListener('click', (e) => {
+                e.stopPropagation();
+                resetGame();
+                // 重置後可選直接開始？ 這裡保留 ready 狀態，讓玩家自己點擊開始。
+                // 但為了方便，如果之前是 gameover 或 playing，重置後設為 ready。
+                gameState = 'ready';
+                draw();
+            });
+            
+            // 鍵盤空白鍵 (輔助)
+            window.addEventListener('keydown', (e) => {
+                if (e.key === ' ' || e.key === 'Space') {
+                    e.preventDefault(); // 防止滾動
+                    flap();
+                }
+            });
+            
+            // 初始化
+            resetGame();
+            // 啟動遊戲迴圈
+            if (animationFrame) cancelAnimationFrame(animationFrame);
+            animationFrame = requestAnimationFrame(gameLoop);
+            
+            // 頁面卸載時清理
+            window.addEventListener('beforeunload', () => {
+                if (animationFrame) cancelAnimationFrame(animationFrame);
+            });
+            
+        })();
+    </script>
+</body>
+</html>
