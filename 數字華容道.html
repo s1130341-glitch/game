@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數字華容道 · 自訂階數</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body {
+            background: linear-gradient(145deg, #1a2a3a 0%, #0f1a24 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+        .game-container {
+            background: #1e2f3f;
+            border-radius: 36px;
+            padding: 24px 22px 28px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.6), inset 0 1px 4px rgba(255,255,255,0.08);
+            border: 1px solid #3e5568;
+            width: fit-content;
+            max-width: 100%;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .title {
+            color: #b7d9ee;
+            font-weight: 500;
+            letter-spacing: 2px;
+            font-size: 1.6rem;
+            text-shadow: 0 2px 5px #0b141c;
+            margin: 0;
+            line-height: 1;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            background: #0f1e2a;
+            padding: 8px 18px;
+            border-radius: 40px;
+            border: 1px solid #345064;
+            color: #aacce4;
+            font-weight: 500;
+            font-size: 1.1rem;
+            box-shadow: inset 0 0 8px #00000033;
+        }
+        .stats span {
+            color: #f2e9c2;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .board-wrapper {
+            background: #10212e;
+            border-radius: 24px;
+            padding: 16px;
+            box-shadow: inset 0 6px 10px #00000055, 0 10px 20px #00000033;
+            border: 1px solid #2d4a5e;
+            margin-bottom: 18px;
+        }
+        .board {
+            display: grid;
+            gap: 8px;
+            background: #1a2d3b;
+            padding: 8px;
+            border-radius: 16px;
+            transition: 0.2s;
+            width: fit-content;
+            margin: 0 auto;
+        }
+        .tile {
+            background: #28485e;
+            background-image: linear-gradient(145deg, #2f5470, #1d3545);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #f0f9ff;
+            text-shadow: 0 3px 4px #00000080;
+            box-shadow: 0 8px 0 #0e1921, 0 10px 18px #00000055, inset 0 1px 3px #ffffff40;
+            cursor: pointer;
+            transition: all 0.08s ease;
+            aspect-ratio: 1 / 1;
+            font-size: clamp(1.2rem, 7vw, 2.2rem);
+            border: 1px solid #5385a3;
+            line-height: 1;
+            padding: 4px;
+            will-change: transform;
+        }
+        .tile:active {
+            transform: scale(0.96);
+            box-shadow: 0 3px 0 #0e1921, 0 6px 12px #00000066;
+        }
+        .tile.empty {
+            background: #0f1d26;
+            background-image: none;
+            box-shadow: inset 0 4px 8px #00000099, 0 0 0 1px #2a4152;
+            border: 1px solid #1f3443;
+            color: transparent;
+            text-shadow: none;
+            cursor: default;
+            transform: none;
+            box-shadow: inset 0 5px 8px #000000aa;
+        }
+        .tile.empty:active {
+            transform: none;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 14px;
+        }
+        .size-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #0f1e2a;
+            padding: 8px 16px;
+            border-radius: 40px;
+            border: 1px solid #345064;
+            color: #c2d9eb;
+        }
+        .size-control label {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        .size-control input {
+            width: 70px;
+            padding: 8px 8px;
+            border-radius: 30px;
+            border: 1px solid #3f6179;
+            background: #1b2f3d;
+            color: #f0f9ff;
+            font-weight: 600;
+            text-align: center;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.15s;
+        }
+        .size-control input:focus {
+            border-color: #7ab3d9;
+            box-shadow: 0 0 0 2px #2e5775;
+        }
+        button {
+            background: #2e4e64;
+            border: none;
+            color: #e1f0fc;
+            font-weight: 600;
+            padding: 10px 22px;
+            border-radius: 40px;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #0d1a23, 0 6px 12px #00000050;
+            transition: 0.08s ease;
+            border: 1px solid #5c88a5;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        button:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #0d1a23, 0 6px 12px #00000050;
+        }
+        button.secondary {
+            background: #324856;
+            border-color: #4a6e85;
+            box-shadow: 0 6px 0 #121f28, 0 6px 12px #00000050;
+        }
+        .btn-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .status-msg {
+            text-align: center;
+            margin-top: 14px;
+            color: #b9d9f0;
+            font-weight: 400;
+            font-size: 0.95rem;
+            min-height: 24px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 1px 3px black;
+        }
+        .win-effect {
+            animation: winPulse 0.6s ease infinite alternate;
+        }
+        @keyframes winPulse {
+            from { box-shadow: 0 0 5px #b9e6ff, 0 8px 0 #0e1921; }
+            to { box-shadow: 0 0 20px #b9e6ff, 0 8px 0 #0e1921; }
+        }
+        .footer-note {
+            font-size: 0.75rem;
+            color: #5d7e95;
+            text-align: center;
+            margin-top: 18px;
+        }
+    </style>
+</head>
+<body>
+<div class="game-container" id="app">
+    <div class="header">
+        <div class="title">🧩 數字華容道</div>
+        <div class="stats">
+            <div>步數 <span id="moveCounter">0</span></div>
+            <div>階數 <span id="sizeDisplay">3</span></div>
+        </div>
+    </div>
+    <div class="board-wrapper">
+        <div id="board" class="board"></div>
+    </div>
+
+    <div class="controls">
+        <div class="size-control">
+            <label>階數</label>
+            <input type="number" id="sizeInput" min="2" max="6" value="3" step="1">
+            <button id="applySizeBtn" style="padding: 8px 16px; font-size: 0.9rem;">套用</button>
+        </div>
+        <div class="btn-group">
+            <button id="newGameBtn">🔄 新遊戲</button>
+            <button id="clearDataBtn" class="secondary">🗑️ 清除資料</button>
+        </div>
+    </div>
+    <div id="message" class="status-msg"></div>
+    <div class="footer-note">點擊方塊與空格交換 · 自動儲存進度</div>
+</div>
+
+<script>
+    (function() {
+        // ---------- 遊戲狀態 ----------
+        let size = 3;                 // 當前階數
+        let tiles = [];              // 一維陣列，長度 size*size
+        let emptyIndex = 0;          // 空格所在索引
+        let moveCount = 0;           // 步數
+        let isWin = false;           // 是否已完成
+        let winAnimationInterval = null; // 勝利動畫定時器
+
+        // DOM 元素
+        const boardEl = document.getElementById('board');
+        const moveCounterEl = document.getElementById('moveCounter');
+        const sizeDisplayEl = document.getElementById('sizeDisplay');
+        const messageEl = document.getElementById('message');
+        const sizeInput = document.getElementById('sizeInput');
+        const applySizeBtn = document.getElementById('applySizeBtn');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const clearDataBtn = document.getElementById('clearDataBtn');
+
+        // ---------- 儲存相關 ----------
+        const STORAGE_KEY = 'number_slide_puzzle_state';
+
+        // 儲存目前狀態到 localStorage
+        function saveState() {
+            if (isWin) {
+                // 勝利後儲存也沒問題，但可一併記錄勝利
+            }
+            const state = {
+                size: size,
+                tiles: tiles.slice(),
+                emptyIndex: emptyIndex,
+                moveCount: moveCount,
+                isWin: isWin
+            };
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (e) {
+                console.warn('無法儲存至 localStorage:', e);
+            }
+        }
+
+        // 從 localStorage 載入狀態，若無則回傳 null
+        function loadState() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return null;
+                const state = JSON.parse(raw);
+                // 基本驗證
+                if (typeof state.size !== 'number' || !Array.isArray(state.tiles)) return null;
+                if (state.tiles.length !== state.size * state.size) return null;
+                if (typeof state.emptyIndex !== 'number') return null;
+                // 確保 tiles 內容有效（0 表示空格）
+                return state;
+            } catch (e) {
+                console.warn('解析儲存資料失敗:', e);
+                return null;
+            }
+        }
+
+        // 清除 localStorage 並重置遊戲（但保留目前設定大小）
+        function clearAllData(keepSize = true) {
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+            // 根據 keepSize 決定是否保留階數，但預設從 input 讀取
+            let newSize = size;
+            if (!keepSize) {
+                // 如果不想保留，可設為 3，但我們保留比較合理
+                newSize = 3;
+                sizeInput.value = 3;
+            }
+            // 重新開始遊戲
+            initGame(newSize, true); // 強制不讀取存檔
+            messageEl.textContent = '資料已清除，重新開始';
+            setTimeout(() => { if (messageEl.textContent === '資料已清除，重新開始') messageEl.textContent = ''; }, 2000);
+        }
+
+        // ---------- 輔助函式 ----------
+        // 生成 solved 狀態 (0 為空格，最後一格)
+        function createSolvedTiles(n) {
+            const total = n * n;
+            const arr = [];
+            for (let i = 1; i < total; i++) {
+                arr.push(i);
+            }
+            arr.push(0); // 空格在最後
+            return arr;
+        }
+
+        // 檢查是否勝利 (0 在最後，且前面 1..n-1 依序)
+        function checkWin(tilesArray, n) {
+            const total = n * n;
+            for (let i = 0; i < total - 1; i++) {
+                if (tilesArray[i] !== i + 1) return false;
+            }
+            return tilesArray[total - 1] === 0;
+        }
+
+        // 停止勝利動畫
+        function stopWinAnimation() {
+            if (winAnimationInterval) {
+                clearInterval(winAnimationInterval);
+                winAnimationInterval = null;
+            }
+            // 移除勝利 class
+            document.querySelectorAll('.tile').forEach(el => el.classList.remove('win-effect'));
+        }
+
+        // 啟動勝利動畫 (所有非空格方塊閃爍)
+        function startWinAnimation() {
+            stopWinAnimation();
+            winAnimationInterval = setInterval(() => {
+                document.querySelectorAll('.tile:not(.empty)').forEach(el => {
+                    el.classList.toggle('win-effect');
+                });
+            }, 400);
+        }
+
+        // ---------- 渲染棋盤 ----------
+        function renderBoard() {
+            // 設定 grid 列
+            const total = size * size;
+            boardEl.style.gridTemplateColumns = `repeat(${size}, minmax(0, 1fr))`;
+            // 根據容器大小動態設定方塊尺寸 (自適應)
+            const boardWrapper = document.querySelector('.board-wrapper');
+            // 用 css 變數? 直接由寬度控制，但 grid 會自適應。我們讓 tile 寬高由 grid 單元格決定
+            // 但為了字體與大小，可以用 aspect-ratio，已設定。此外要限制最大寬度避免太大。
+            // 透過外層寬度: 使用 js 計算? 用 CSS 限制最大寬度即可
+            // 設置父容器最大寬度
+            const maxBoardWidth = Math.min(500, window.innerWidth - 100);
+            boardEl.style.maxWidth = maxBoardWidth + 'px';
+            boardEl.style.width = '100%';
+            // 清除棋盤
+            boardEl.innerHTML = '';
+            // 遍歷 tiles 生成方塊
+            for (let i = 0; i < total; i++) {
+                const value = tiles[i];
+                const tileDiv = document.createElement('div');
+                tileDiv.className = 'tile' + (value === 0 ? ' empty' : '');
+                if (value !== 0) {
+                    tileDiv.textContent = value;
+                } else {
+                    tileDiv.textContent = '';
+                }
+                tileDiv.dataset.index = i;
+                if (!isWin && value !== 0) {
+                    tileDiv.addEventListener('click', () => handleTileClick(i));
+                } else {
+                    // 勝利後無法點擊，但保留指針樣式
+                    tileDiv.style.cursor = 'default';
+                }
+                boardEl.appendChild(tileDiv);
+            }
+
+            // 更新步數與階數顯示
+            moveCounterEl.textContent = moveCount;
+            sizeDisplayEl.textContent = size;
+            sizeInput.value = size;
+
+            // 若勝利，顯示訊息與動畫
+            if (isWin) {
+                messageEl.textContent = '🎉 恭喜完成！ 🎉';
+                startWinAnimation();
+            } else {
+                stopWinAnimation();
+                // 不自動清除訊息，可能由其他操作覆蓋
+            }
+        }
+
+        // ---------- 點擊處理 (交換) ----------
+        function handleTileClick(index) {
+            if (isWin) return; // 勝利後禁止移動
+
+            // 檢查是否與空格相鄰 (上下左右)
+            const row = Math.floor(index / size);
+            const col = index % size;
+            const emptyRow = Math.floor(emptyIndex / size);
+            const emptyCol = emptyIndex % size;
+
+            const isAdjacent = (Math.abs(row - emptyRow) + Math.abs(col - emptyCol)) === 1;
+            if (!isAdjacent) return;
+
+            // 交換
+            [tiles[emptyIndex], tiles[index]] = [tiles[index], tiles[emptyIndex]];
+            // 更新空格索引
+            emptyIndex = index;
+            // 步數增加
+            moveCount++;
+            // 更新步數顯示
+            moveCounterEl.textContent = moveCount;
+
+            // 檢查勝利
+            const winNow = checkWin(tiles, size);
+            if (winNow) {
+                isWin = true;
+            }
+
+            // 重新渲染棋盤 (局部更新也可以，但簡單重新渲染)
+            // 但因為事件監聽會重新綁定，所以直接重新渲染
+            renderBoard();
+
+            // 儲存狀態
+            saveState();
+
+            if (isWin) {
+                messageEl.textContent = '🎉 恭喜完成！ 🎉';
+            } else {
+                // 可選: 清除之前的勝利訊息
+                if (messageEl.textContent.includes('恭喜')) {
+                    messageEl.textContent = '';
+                }
+            }
+        }
+
+        // ---------- 初始化/新遊戲 ----------
+        function initGame(newSize, forceNoLoad = false) {
+            // 停止勝利動畫
+            stopWinAnimation();
+
+            // 驗證階數
+            let n = Number(newSize);
+            if (isNaN(n) || n < 2) n = 2;
+            if (n > 6) n = 6; // 限制最大 6 階，避免太小
+            size = n;
+            sizeInput.value = n;
+
+            let loaded = false;
+            if (!forceNoLoad) {
+                const saved = loadState();
+                if (saved && saved.size === size) {
+                    // 載入儲存
+                    tiles = saved.tiles.slice();
+                    emptyIndex = saved.emptyIndex;
+                    moveCount = saved.moveCount;
+                    isWin = saved.isWin || false; // 避免 undefined
+                    // 驗證 tiles 合法性
+                    const total = size * size;
+                    if (tiles.length === total && tiles.includes(0)) {
+                        loaded = true;
+                        // 二次檢查勝利狀態 (以防資料不一致)
+                        isWin = checkWin(tiles, size);
+                    }
+                }
+            }
+
+            if (!loaded) {
+                // 新遊戲: 使用已解開的盤面 (方便測試，但通常滑動拼圖要打亂)
+                // 但這裡為了可玩性，我們生成一個可解的打亂狀態 (通過從 solved 隨機移動)
+                // 使用 solved 再隨機走幾步，確保可解。
+                tiles = createSolvedTiles(size);
+                emptyIndex = size * size - 1;
+                moveCount = 0;
+                isWin = false;
+                // 打亂: 隨機移動 100 * size 步
+                const shuffleSteps = 100 * size;
+                for (let s = 0; s < shuffleSteps; s++) {
+                    const neighbors = getNeighbors(emptyIndex);
+                    const randomNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+                    // 交換
+                    [tiles[emptyIndex], tiles[randomNeighbor]] = [tiles[randomNeighbor], tiles[emptyIndex]];
+                    emptyIndex = randomNeighbor;
+                }
+                // 打亂後步數歸零
+                moveCount = 0;
+                isWin = checkWin(tiles, size); // 理論上不會贏，但以防萬一
+                if (isWin) {
+                    // 如果運氣太好打亂後直接贏了，就再打亂一次 (避免開局即贏)
+                    // 簡單遞迴? 直接再打亂幾步
+                    for (let s = 0; s < 30; s++) {
+                        const neighbors = getNeighbors(emptyIndex);
+                        const randomNeighbor = neighbors[Math.floor(Math.random() * neighbors.length)];
+                        [tiles[emptyIndex], tiles[randomNeighbor]] = [tiles[randomNeighbor], tiles[emptyIndex]];
+                        emptyIndex = randomNeighbor;
+                    }
+                    isWin = checkWin(tiles, size);
+                    moveCount = 0;
+                }
+            }
+
+            // 更新介面
+            renderBoard();
+            // 若勝利，顯示動畫
+            if (isWin) {
+                messageEl.textContent = '🎉 恭喜完成！ 🎉';
+                startWinAnimation();
+            } else {
+                messageEl.textContent = '';
+            }
+
+            // 儲存目前狀態（無論是新遊戲或載入）
+            saveState();
+        }
+
+        // 取得某索引的相鄰索引 (上下左右)
+        function getNeighbors(idx) {
+            const row = Math.floor(idx / size);
+            const col = idx % size;
+            const neighbors = [];
+            if (row > 0) neighbors.push(idx - size);
+            if (row < size - 1) neighbors.push(idx + size);
+            if (col > 0) neighbors.push(idx - 1);
+            if (col < size - 1) neighbors.push(idx + 1);
+            return neighbors;
+        }
+
+        // ---------- 事件綁定 ----------
+        // 套用階數按鈕
+        applySizeBtn.addEventListener('click', () => {
+            let newSize = parseInt(sizeInput.value, 10);
+            if (isNaN(newSize) || newSize < 2) newSize = 2;
+            if (newSize > 6) newSize = 6;
+            sizeInput.value = newSize;
+
+            // 如果階數與目前相同，僅提示，不重置
+            if (newSize === size) {
+                messageEl.textContent = `已經係 ${newSize} 階啦`;
+                setTimeout(() => {
+                    if (messageEl.textContent.includes('已經係')) messageEl.textContent = '';
+                }, 1500);
+                return;
+            }
+
+            // 切換階數：清除舊存檔並以新階數重新開始
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+            initGame(newSize, true); // 強制不載入舊存檔
+            messageEl.textContent = `已切換至 ${newSize} 階`;
+            setTimeout(() => {
+                if (messageEl.textContent.includes('已切換')) messageEl.textContent = '';
+            }, 1500);
+        });
+
+        // 新遊戲按鈕
+        newGameBtn.addEventListener('click', () => {
+            // 使用當前階數，重新打亂
+            // 但先清除存檔，避免載入舊進度
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+            initGame(size, true); // 強制新遊戲
+            messageEl.textContent = '新遊戲開始';
+            setTimeout(() => {
+                if (messageEl.textContent === '新遊戲開始') messageEl.textContent = '';
+            }, 1200);
+        });
+
+        // 清除資料按鈕
+        clearDataBtn.addEventListener('click', () => {
+            clearAllData(true); // 保留目前階數，但清除存檔並重置
+        });
+
+        // 頁面加載時啟動
+        window.addEventListener('load', () => {
+            // 先讀取儲存的階數？或者從 localStorage 載入狀態
+            const saved = loadState();
+            if (saved && typeof saved.size === 'number' && saved.size >= 2 && saved.size <= 6) {
+                size = saved.size;
+                sizeInput.value = size;
+                initGame(size, false); // 允許載入
+            } else {
+                // 預設 3 階新遊戲
+                sizeInput.value = 3;
+                initGame(3, true);
+            }
+        });
+
+        // 視窗大小改變時重新渲染以自適應（可選）
+        window.addEventListener('resize', () => {
+            // 重新計算 board 寬度限制
+            if (tiles.length > 0) {
+                const maxBoardWidth = Math.min(500, window.innerWidth - 100);
+                boardEl.style.maxWidth = maxBoardWidth + 'px';
+            }
+        });
+
+        // 額外: 如果透過 input 直接按 Enter 也可以套用
+        sizeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                applySizeBtn.click();
+            }
+        });
+
+        // 注意: 因為 renderBoard 重新綁定事件，勝利時無法點擊
+        // 此外，saveState 會頻繁調用，但 localStorage 寫入很快，可接受。
+
+    })();
+</script>
+</body>
+</html>
