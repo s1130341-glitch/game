@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Hole.io 3D - 大逃杀终极版</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; background: #000; }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 16px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            border: 1px solid #3366ff;
+        }
+        #leaderboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            color: #fff;
+            padding: 15px 20px;
+            border-radius: 15px;
+            pointer-events: none;
+            z-index: 100;
+            min-width: 240px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.7);
+            border: 2px solid #ffaa00;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+        }
+        #leaderboard h3 {
+            margin: 0 0 10px 0;
+            color: #ffaa00;
+            text-align: center;
+            font-size: 18px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+        }
+        .leaderboard-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+        .leaderboard-entry.player {
+            color: #ffaa00;
+            font-weight: bold;
+            background: rgba(255,170,0,0.1);
+            border-radius: 5px;
+            padding: 4px 5px;
+        }
+        .leaderboard-entry .rank {
+            width: 25px;
+            text-align: center;
+        }
+        .leaderboard-entry .name {
+            flex: 1;
+            margin-left: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .leaderboard-entry .score {
+            margin-left: 10px;
+            color: #88ff88;
+        }
+        #score-board {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            color: #ffaa00;
+            padding: 15px 25px;
+            border-radius: 15px;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(255,170,0,0.3);
+            border: 2px solid #ffaa00;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #ccc;
+            padding: 12px 25px;
+            border-radius: 50px;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.2);
+            white-space: nowrap;
+        }
+        #restart-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #ffaa00;
+            color: black;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 200;
+            box-shadow: 0 0 20px rgba(255,170,0,0.5);
+            transition: transform 0.1s;
+        }
+        #restart-btn:hover {
+            background: #ffc34d;
+            transform: scale(1.05);
+        }
+        .winner-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffaa00;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 30px black;
+            z-index: 300;
+            text-align: center;
+            pointer-events: none;
+            background: rgba(0,0,0,0.8);
+            padding: 30px 60px;
+            border-radius: 20px;
+            border: 4px solid #ffaa00;
+            white-space: nowrap;
+        }
+        #alive-counter {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ff6666;
+            padding: 10px 20px;
+            border-radius: 30px;
+            pointer-events: none;
+            z-index: 100;
+            font-size: 18px;
+            font-weight: bold;
+            border: 1px solid #ff6666;
+            box-shadow: 0 0 15px rgba(255,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="info">🕳️ 黑洞大逃杀 | 地图: 400x400</div>
+    <div id="alive-counter">存活对手: <span id="alive-count">20</span></div>
+    <div id="score-board">得分: <span id="score-value">0</span></div>
+    <div id="leaderboard">
+        <h3>🏆 排行榜</h3>
+        <div id="leaderboard-list"></div>
+    </div>
+    <div id="controls">⌨️ WASD / 方向键 移动黑洞 | 吃掉所有对手获胜！</div>
+    <button id="restart-btn">重新开始</button>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 游戏配置 ---
+        const CONFIG = {
+            MAP_SIZE: 400,
+            AI_COUNT: 20,
+            OBJECT_COUNT: 700,
+            MIN_OBJECTS: 250,
+            PLAYER_START_RADIUS: 2.5,
+            AI_START_RADIUS: 1.8,
+            MAX_RADIUS: 22,
+            CAMERA_HEIGHT: 38,
+            CAMERA_DISTANCE: 45,
+            MOVE_SPEED: 38,
+            AI_SPEED_BASE: 13,
+            GROWTH_FACTOR: 0.18,
+            EAT_RATIO: 0.8,
+            AI_EAT_RATIO: 0.85,
+            // 物体大小极值
+            MIN_OBJ_RADIUS: 0.4,
+            MAX_OBJ_RADIUS: 5.0,
+        };
+
+        // --- 初始化场景、相机、渲染器 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        scene.fog = new THREE.Fog(0x0a0a1a, 180, 400);
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, CONFIG.CAMERA_HEIGHT, CONFIG.CAMERA_DISTANCE);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- 灯光 ---
+        const ambientLight = new THREE.AmbientLight(0x404060);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(60, 100, 40);
+        dirLight.castShadow = true;
+        dirLight.receiveShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        const d = 220;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 500;
+        scene.add(dirLight);
+
+        const backLight = new THREE.PointLight(0x4466ff, 0.6);
+        backLight.position.set(-60, 50, -60);
+        scene.add(backLight);
+
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const radius = 160;
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            const light = new THREE.PointLight(0x3366ff, 0.25);
+            light.position.set(x, 25, z);
+            scene.add(light);
+        }
+
+        // --- 地面 ---
+        const groundGeometry = new THREE.CircleGeometry(CONFIG.MAP_SIZE / 2, 64);
+        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.8, metalness: 0.2 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.5;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        const boundaryRing = new THREE.Mesh(
+            new THREE.RingGeometry(CONFIG.MAP_SIZE / 2 - 1, CONFIG.MAP_SIZE / 2 + 1, 128),
+            new THREE.MeshStandardMaterial({ color: 0x3366ff, emissive: 0x2244aa, side: THREE.DoubleSide })
+        );
+        boundaryRing.rotation.x = -Math.PI / 2;
+        boundaryRing.position.y = -0.4;
+        scene.add(boundaryRing);
+
+        const gridHelper = new THREE.GridHelper(CONFIG.MAP_SIZE, 50, 0x3366ff, 0x2244aa);
+        gridHelper.position.y = -0.45;
+        scene.add(gridHelper);
+
+        const centerRing = new THREE.Mesh(
+            new THREE.TorusGeometry(20, 0.4, 16, 64),
+            new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0x442200 })
+        );
+        centerRing.rotation.x = Math.PI / 2;
+        centerRing.position.y = 0.1;
+        scene.add(centerRing);
+
+        // --- 游戏状态 ---
+        const state = {
+            playerHole: null,
+            playerRadius: CONFIG.PLAYER_START_RADIUS,
+            playerScore: 0,
+            playerName: '玩家',
+            ais: [],
+            objects: [],
+            gameActive: true,
+            winner: null,
+            keys: { w: false, a: false, s: false, d: false, up: false, down: false, left: false, right: false },
+            lastTime: 0,
+            cameraOffset: new THREE.Vector3(0, CONFIG.CAMERA_HEIGHT, CONFIG.CAMERA_DISTANCE),
+            leaderboardUpdateTimer: 0,
+            aliveAI: CONFIG.AI_COUNT,
+        };
+
+        const holeGeometry = new THREE.CircleGeometry(1, 32);
+        const ringGeometry = new THREE.TorusGeometry(1, 0.08, 16, 64);
+
+        // --- 创建玩家黑洞 ---
+        function createPlayerHole() {
+            const group = new THREE.Group();
+            
+            const discMat = new THREE.MeshStandardMaterial({
+                color: 0x000000,
+                emissive: 0x330066,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.95
+            });
+            const disc = new THREE.Mesh(holeGeometry, discMat);
+            disc.rotation.x = -Math.PI / 2;
+            disc.position.y = 0.05;
+            disc.scale.set(state.playerRadius, state.playerRadius, 1);
+            group.add(disc);
+
+            const ringMat = new THREE.MeshStandardMaterial({ 
+                color: 0xffaa00, 
+                emissive: 0xaa4400,
+                emissiveIntensity: 1.0
+            });
+            const ring = new THREE.Mesh(ringGeometry, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.1;
+            ring.scale.set(state.playerRadius, state.playerRadius, 1);
+            group.add(ring);
+
+            const innerGlow = new THREE.PointLight(0xffaa00, 1.2, 18);
+            innerGlow.position.y = 1.5;
+            group.add(innerGlow);
+
+            group.position.set(0, 0, 0);
+            scene.add(group);
+            return group;
+        }
+
+        function updatePlayerHoleVisual() {
+            if (!state.playerHole) return;
+            const disc = state.playerHole.children[0];
+            const ring = state.playerHole.children[1];
+            disc.scale.set(state.playerRadius, state.playerRadius, 1);
+            ring.scale.set(state.playerRadius, state.playerRadius, 1);
+        }
+
+        // --- 创建 AI 黑洞 ---
+        function createAIHole(index, initialRadius) {
+            const group = new THREE.Group();
+            
+            const hue = (index * 0.13) % 1.0;
+            const color = new THREE.Color().setHSL(hue, 0.9, 0.6);
+            
+            const discMat = new THREE.MeshStandardMaterial({
+                color: 0x000000,
+                emissive: color.clone().multiplyScalar(0.3),
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.9
+            });
+            const disc = new THREE.Mesh(holeGeometry, discMat);
+            disc.rotation.x = -Math.PI / 2;
+            disc.position.y = 0.05;
+            disc.scale.set(initialRadius, initialRadius, 1);
+            group.add(disc);
+
+            const ringMat = new THREE.MeshStandardMaterial({ 
+                color: color, 
+                emissive: color.clone().multiplyScalar(0.7),
+                emissiveIntensity: 0.8
+            });
+            const ring = new THREE.Mesh(ringGeometry, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.1;
+            ring.scale.set(initialRadius, initialRadius, 1);
+            group.add(ring);
+
+            const glowLight = new THREE.PointLight(color, 0.8, 14);
+            glowLight.position.y = 1.2;
+            group.add(glowLight);
+
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 40 + Math.random() * 150;
+            const x = Math.cos(angle) * dist;
+            const z = Math.sin(angle) * dist;
+            group.position.set(x, 0, z);
+
+            scene.add(group);
+
+            return {
+                group,
+                radius: initialRadius,
+                score: 0,
+                name: `AI ${index + 1}`,
+                color: color,
+                targetX: x,
+                targetZ: z,
+                changeTimer: Math.random() * 3,
+                speed: CONFIG.AI_SPEED_BASE + Math.random() * 10,
+                personality: Math.floor(Math.random() * 3),
+                fleeTargetX: 0,
+                fleeTargetZ: 0,
+                fleeing: false,
+                fleeTimer: 0,
+                hunting: false,
+                huntTarget: null,
+            };
+        }
+
+        function updateAIHoleVisual(ai) {
+            const disc = ai.group.children[0];
+            const ring = ai.group.children[1];
+            disc.scale.set(ai.radius, ai.radius, 1);
+            ring.scale.set(ai.radius, ai.radius, 1);
+        }
+
+        // --- 生成物体 (大小极值变化) ---
+        function createObject(x, z) {
+            const types = ['cube', 'sphere', 'cylinder', 'cone', 'torus', 'pyramid', 'diamond'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            const colors = [0xffaa00, 0xff6600, 0x44aaff, 0x66ff66, 0xff44aa, 0xaa44ff, 0xffdd44, 0x44ffaa, 0xff3366, 0x33ffcc];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            
+            let mesh;
+            // 极端大小变化: 对数分布使得小物体多，大物体少但非常大
+            const sizeRandom = Math.pow(Math.random(), 2.5); // 偏向小值
+            let radius = CONFIG.MIN_OBJ_RADIUS + sizeRandom * (CONFIG.MAX_OBJ_RADIUS - CONFIG.MIN_OBJ_RADIUS);
+            
+            // 偶尔生成超大物体
+            if (Math.random() < 0.08) {
+                radius = 4.0 + Math.random() * 3.0;
+            }
+            // 偶尔生成极小物体
+            if (Math.random() < 0.2) {
+                radius = 0.3 + Math.random() * 0.5;
+            }
+            
+            const value = Math.floor(radius * 4 + 1);
+            
+            switch(type) {
+                case 'cube':
+                    mesh = new THREE.Mesh(
+                        new THREE.BoxGeometry(radius * 1.4, radius * 1.4, radius * 1.4),
+                        new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.2 })
+                    );
+                    mesh.position.set(x, radius * 0.7, z);
+                    break;
+                case 'sphere':
+                    mesh = new THREE.Mesh(
+                        new THREE.SphereGeometry(radius, 12, 12),
+                        new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.1 })
+                    );
+                    mesh.position.set(x, radius, z);
+                    break;
+                case 'cylinder':
+                    mesh = new THREE.Mesh(
+                        new THREE.CylinderGeometry(radius, radius, radius * 1.6, 8),
+                        new THREE.MeshStandardMaterial({ color, roughness: 0.5 })
+                    );
+                    mesh.position.set(x, radius * 0.8, z);
+                    break;
+                case 'cone':
+                    mesh = new THREE.Mesh(
+                        new THREE.ConeGeometry(radius, radius * 2.0, 8),
+                        new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
+                    );
+                    mesh.position.set(x, radius * 1.0, z);
+                    break;
+                case 'torus':
+                    mesh = new THREE.Mesh(
+                        new THREE.TorusGeometry(radius, radius * 0.4, 8, 16),
+                        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
+                    );
+                    mesh.rotation.x = Math.PI / 2;
+                    mesh.position.set(x, radius * 0.7, z);
+                    break;
+                case 'pyramid':
+                    mesh = new THREE.Mesh(
+                        new THREE.ConeGeometry(radius, radius * 1.8, 4),
+                        new THREE.MeshStandardMaterial({ color, roughness: 0.5 })
+                    );
+                    mesh.position.set(x, radius * 0.9, z);
+                    break;
+                case 'diamond':
+                    mesh = new THREE.Mesh(
+                        new THREE.OctahedronGeometry(radius, 0),
+                        new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.4 })
+                    );
+                    mesh.position.set(x, radius * 0.9, z);
+                    break;
+            }
+
+            mesh.rotation.y = Math.random() * Math.PI * 2;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            
+            scene.add(mesh);
+            return { mesh, radius, value, type };
+        }
+
+        function generateObjects(count) {
+            for (let i = 0; i < count; i++) {
+                const x = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.9;
+                const z = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.9;
+                const obj = createObject(x, z);
+                state.objects.push(obj);
+            }
+        }
+
+        // --- 初始化 AI ---
+        function initAIs(count) {
+            for (let i = 0; i < count; i++) {
+                const ai = createAIHole(i, CONFIG.AI_START_RADIUS + Math.random() * 0.8);
+                state.ais.push(ai);
+            }
+            state.aliveAI = count;
+        }
+
+        // --- 重置游戏 ---
+        function resetGame() {
+            state.objects.forEach(obj => scene.remove(obj.mesh));
+            state.objects = [];
+            state.ais.forEach(ai => scene.remove(ai.group));
+            state.ais = [];
+            if (state.playerHole) scene.remove(state.playerHole);
+            
+            state.playerRadius = CONFIG.PLAYER_START_RADIUS;
+            state.playerScore = 0;
+            state.gameActive = true;
+            state.winner = null;
+            state.keys = { w: false, a: false, s: false, d: false, up: false, down: false, left: false, right: false };
+            state.aliveAI = CONFIG.AI_COUNT;
+            
+            const winnerMsg = document.querySelector('.winner-message');
+            if (winnerMsg) winnerMsg.remove();
+            
+            state.playerHole = createPlayerHole();
+            updatePlayerHoleVisual();
+            initAIs(CONFIG.AI_COUNT);
+            generateObjects(CONFIG.OBJECT_COUNT);
+            
+            document.getElementById('score-value').textContent = '0';
+            document.getElementById('alive-count').textContent = CONFIG.AI_COUNT;
+            updateLeaderboard();
+        }
+
+        // --- 键盘控制 ---
+        function initKeyboard() {
+            window.addEventListener('keydown', (e) => {
+                switch(e.key) {
+                    case 'w': case 'W': case 'ArrowUp': state.keys.up = true; e.preventDefault(); break;
+                    case 's': case 'S': case 'ArrowDown': state.keys.down = true; e.preventDefault(); break;
+                    case 'a': case 'A': case 'ArrowLeft': state.keys.left = true; e.preventDefault(); break;
+                    case 'd': case 'D': case 'ArrowRight': state.keys.right = true; e.preventDefault(); break;
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                switch(e.key) {
+                    case 'w': case 'W': case 'ArrowUp': state.keys.up = false; e.preventDefault(); break;
+                    case 's': case 'S': case 'ArrowDown': state.keys.down = false; e.preventDefault(); break;
+                    case 'a': case 'A': case 'ArrowLeft': state.keys.left = false; e.preventDefault(); break;
+                    case 'd': case 'D': case 'ArrowRight': state.keys.right = false; e.preventDefault(); break;
+                }
+            });
+        }
+
+        // --- 更新玩家移动 ---
+        function updatePlayerMovement(deltaTime) {
+            if (!state.playerHole || !state.gameActive) return;
+            
+            let moveX = 0;
+            let moveZ = 0;
+            
+            if (state.keys.up) moveZ -= 1;
+            if (state.keys.down) moveZ += 1;
+            if (state.keys.left) moveX -= 1;
+            if (state.keys.right) moveX += 1;
+            
+            if (moveX !== 0 || moveZ !== 0) {
+                const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                moveX /= length;
+                moveZ /= length;
+                
+                const speed = CONFIG.MOVE_SPEED * deltaTime;
+                const pos = state.playerHole.position;
+                pos.x += moveX * speed;
+                pos.z += moveZ * speed;
+                
+                const halfMap = CONFIG.MAP_SIZE / 2 - state.playerRadius - 2;
+                pos.x = Math.max(-halfMap, Math.min(halfMap, pos.x));
+                pos.z = Math.max(-halfMap, Math.min(halfMap, pos.z));
+            }
+            
+            if (state.playerHole.children[1]) {
+                state.playerHole.children[1].rotation.z += deltaTime * 1.5;
+            }
+        }
+
+        // --- 更新相机 ---
+        function updateCamera(deltaTime) {
+            if (!state.playerHole) return;
+            
+            const playerPos = state.playerHole.position;
+            const targetCamPos = new THREE.Vector3(
+                playerPos.x,
+                playerPos.y + CONFIG.CAMERA_HEIGHT,
+                playerPos.z + CONFIG.CAMERA_DISTANCE
+            );
+            
+            camera.position.lerp(targetCamPos, 1 - Math.pow(0.001, deltaTime));
+            
+            const lookAtPos = new THREE.Vector3(
+                playerPos.x,
+                playerPos.y,
+                playerPos.z - 8
+            );
+            camera.lookAt(lookAtPos);
+        }
+
+        // --- 更新 AI (移动、吞并、闪避、狩猎) ---
+        function updateAIs(deltaTime) {
+            for (let ai of state.ais) {
+                if (ai.radius >= CONFIG.MAX_RADIUS) continue;
+                
+                ai.changeTimer -= deltaTime;
+                ai.fleeTimer -= deltaTime;
+                ai.hunting = false;
+                ai.huntTarget = null;
+                
+                // ===== 威胁检测 (闪避) =====
+                let threat = null;
+                let minThreatDist = Infinity;
+                
+                if (state.gameActive && state.playerRadius > ai.radius * 1.15) {
+                    const dx = state.playerHole.position.x - ai.group.position.x;
+                    const dz = state.playerHole.position.z - ai.group.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    if (dist < 35 && dist < minThreatDist) {
+                        minThreatDist = dist;
+                        threat = { x: state.playerHole.position.x, z: state.playerHole.position.z, radius: state.playerRadius };
+                    }
+                }
+                
+                for (let other of state.ais) {
+                    if (other === ai) continue;
+                    if (other.radius > ai.radius * 1.15) {
+                        const dx = other.group.position.x - ai.group.position.x;
+                        const dz = other.group.position.z - ai.group.position.z;
+                        const dist = Math.sqrt(dx*dx + dz*dz);
+                        if (dist < 30 && dist < minThreatDist) {
+                            minThreatDist = dist;
+                            threat = { x: other.group.position.x, z: other.group.position.z, radius: other.radius };
+                        }
+                    }
+                }
+                
+                // ===== 猎物检测 (狩猎) =====
+                let prey = null;
+                let minPreyDist = Infinity;
+                
+                // 检查玩家是否可以作为猎物 (AI 吃玩家)
+                if (state.gameActive && ai.radius > state.playerRadius * 1.15) {
+                    const dx = state.playerHole.position.x - ai.group.position.x;
+                    const dz = state.playerHole.position.z - ai.group.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    if (dist < 45 && dist < minPreyDist) {
+                        minPreyDist = dist;
+                        prey = { x: state.playerHole.position.x, z: state.playerHole.position.z, radius: state.playerRadius, isPlayer: true };
+                    }
+                }
+                
+                // 检查其他 AI
+                for (let other of state.ais) {
+                    if (other === ai) continue;
+                    if (ai.radius > other.radius * 1.15) {
+                        const dx = other.group.position.x - ai.group.position.x;
+                        const dz = other.group.position.z - ai.group.position.z;
+                        const dist = Math.sqrt(dx*dx + dz*dz);
+                        if (dist < 40 && dist < minPreyDist) {
+                            minPreyDist = dist;
+                            prey = { x: other.group.position.x, z: other.group.position.z, radius: other.radius, isPlayer: false };
+                        }
+                    }
+                }
+                
+                // ===== 决策优先级: 闪避 > 狩猎 > 吃物体 =====
+                let targetX, targetZ;
+                
+                if (threat && ai.fleeTimer <= 0) {
+                    // 闪避
+                    const dx = ai.group.position.x - threat.x;
+                    const dz = ai.group.position.z - threat.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+                    
+                    const fleeDist = 50;
+                    ai.fleeTargetX = ai.group.position.x + (dx / dist) * fleeDist;
+                    ai.fleeTargetZ = ai.group.position.z + (dz / dist) * fleeDist;
+                    
+                    const halfMap = CONFIG.MAP_SIZE / 2 - 10;
+                    ai.fleeTargetX = Math.max(-halfMap, Math.min(halfMap, ai.fleeTargetX));
+                    ai.fleeTargetZ = Math.max(-halfMap, Math.min(halfMap, ai.fleeTargetZ));
+                    
+                    ai.fleeing = true;
+                    ai.fleeTimer = 1.8;
+                    targetX = ai.fleeTargetX;
+                    targetZ = ai.fleeTargetZ;
+                } else if (prey && (ai.personality === 0 || ai.personality === 2)) {
+                    // 激进型或平衡型狩猎
+                    ai.hunting = true;
+                    ai.huntTarget = prey;
+                    targetX = prey.x;
+                    targetZ = prey.z;
+                } else if (ai.fleeing && ai.fleeTimer > 0) {
+                    targetX = ai.fleeTargetX;
+                    targetZ = ai.fleeTargetZ;
+                } else {
+                    ai.fleeing = false;
+                    
+                    if (ai.changeTimer <= 0) {
+                        ai.changeTimer = 1.0 + Math.random() * 2.5;
+                        
+                        if (state.objects.length > 0 && Math.random() < 0.85) {
+                            // 找最近的能吃物体
+                            let minDist = Infinity;
+                            let nearestObj = null;
+                            
+                            const searchRange = ai.personality === 0 ? 220 : (ai.personality === 1 ? 100 : 170);
+                            
+                            for (let obj of state.objects) {
+                                if (obj.radius > ai.radius * 0.95) continue;
+                                
+                                const dx = obj.mesh.position.x - ai.group.position.x;
+                                const dz = obj.mesh.position.z - ai.group.position.z;
+                                const dist = dx*dx + dz*dz;
+                                if (dist < minDist) {
+                                    minDist = dist;
+                                    nearestObj = obj;
+                                }
+                            }
+                            
+                            if (nearestObj && minDist < searchRange * searchRange) {
+                                targetX = nearestObj.mesh.position.x;
+                                targetZ = nearestObj.mesh.position.z;
+                            } else {
+                                targetX = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.8;
+                                targetZ = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.8;
+                            }
+                        } else {
+                            targetX = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.8;
+                            targetZ = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.8;
+                        }
+                        
+                        const halfMap = CONFIG.MAP_SIZE / 2 - 15;
+                        targetX = Math.max(-halfMap, Math.min(halfMap, targetX));
+                        targetZ = Math.max(-halfMap, Math.min(halfMap, targetZ));
+                        
+                        ai.targetX = targetX;
+                        ai.targetZ = targetZ;
+                    } else {
+                        targetX = ai.targetX;
+                        targetZ = ai.targetZ;
+                    }
+                }
+                
+                // 移动
+                const dx = targetX - ai.group.position.x;
+                const dz = targetZ - ai.group.position.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist > 0.5) {
+                    let speedMult = 1.0;
+                    if (ai.fleeing && ai.fleeTimer > 0) speedMult = 1.9;
+                    if (ai.hunting) speedMult = 1.4;
+                    
+                    const moveSpeed = ai.speed * speedMult * deltaTime;
+                    const normX = dx / dist;
+                    const normZ = dz / dist;
+                    
+                    ai.group.position.x += normX * Math.min(moveSpeed, dist);
+                    ai.group.position.z += normZ * Math.min(moveSpeed, dist);
+                }
+                
+                const halfMap = CONFIG.MAP_SIZE / 2 - ai.radius - 2;
+                ai.group.position.x = Math.max(-halfMap, Math.min(halfMap, ai.group.position.x));
+                ai.group.position.z = Math.max(-halfMap, Math.min(halfMap, ai.group.position.z));
+                
+                if (ai.group.children[1]) {
+                    ai.group.children[1].rotation.z += deltaTime * 1.2;
+                }
+            }
+        }
+
+        // --- 吞噬逻辑 ---
+        function handleEat() {
+            if (!state.gameActive) return;
+
+            const playerPos = state.playerHole.position;
+            const playerR = state.playerRadius;
+
+            // 玩家吞噬物体
+            for (let i = state.objects.length - 1; i >= 0; i--) {
+                const obj = state.objects[i];
+                const dx = obj.mesh.position.x - playerPos.x;
+                const dz = obj.mesh.position.z - playerPos.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist < playerR * 0.9 && playerR > obj.radius * CONFIG.EAT_RATIO) {
+                    scene.remove(obj.mesh);
+                    state.objects.splice(i, 1);
+                    
+                    const growth = obj.radius * CONFIG.GROWTH_FACTOR;
+                    state.playerRadius = Math.min(state.playerRadius + growth, CONFIG.MAX_RADIUS);
+                    state.playerScore += obj.value;
+                    updatePlayerHoleVisual();
+                    document.getElementById('score-value').textContent = state.playerScore;
+                }
+            }
+
+            // AI 吞噬物体
+            for (let ai of state.ais) {
+                if (ai.radius >= CONFIG.MAX_RADIUS) continue;
+                
+                for (let i = state.objects.length - 1; i >= 0; i--) {
+                    const obj = state.objects[i];
+                    const dx = obj.mesh.position.x - ai.group.position.x;
+                    const dz = obj.mesh.position.z - ai.group.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (dist < ai.radius * 0.9 && ai.radius > obj.radius * CONFIG.AI_EAT_RATIO) {
+                        scene.remove(obj.mesh);
+                        state.objects.splice(i, 1);
+                        
+                        const growth = obj.radius * CONFIG.GROWTH_FACTOR;
+                        ai.radius = Math.min(ai.radius + growth, CONFIG.MAX_RADIUS);
+                        ai.score += obj.value;
+                        updateAIHoleVisual(ai);
+                    }
+                }
+            }
+        }
+
+        // --- 黑洞互吃 (玩家和 AI 都可以互吃) ---
+        function handleHoleCollisions() {
+            if (!state.gameActive) return;
+            
+            const playerPos = state.playerHole.position;
+            const playerR = state.playerRadius;
+            
+            // 玩家吃 AI
+            for (let i = state.ais.length - 1; i >= 0; i--) {
+                const ai = state.ais[i];
+                const dx = ai.group.position.x - playerPos.x;
+                const dz = ai.group.position.z - playerPos.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist < playerR * 0.85 && playerR > ai.radius * 1.12) {
+                    // 玩家吃掉 AI
+                    scene.remove(ai.group);
+                    state.ais.splice(i, 1);
+                    state.aliveAI--;
+                    
+                    state.playerRadius = Math.min(state.playerRadius + ai.radius * 0.5, CONFIG.MAX_RADIUS);
+                    state.playerScore += Math.floor(ai.score * 0.6) + 30;
+                    updatePlayerHoleVisual();
+                    document.getElementById('score-value').textContent = state.playerScore;
+                    document.getElementById('alive-count').textContent = state.aliveAI;
+                    
+                    // 检查是否吃完全部对手
+                    if (state.ais.length === 0) {
+                        state.gameActive = false;
+                        state.winner = 'player';
+                        showWinnerMessage('🎉 你吃掉了所有对手！获胜！ 🎉');
+                        return;
+                    }
+                }
+            }
+            
+            // AI 吃玩家
+            for (let ai of state.ais) {
+                if (ai.radius >= CONFIG.MAX_RADIUS) continue;
+                
+                const dx = playerPos.x - ai.group.position.x;
+                const dz = playerPos.z - ai.group.position.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                
+                if (dist < ai.radius * 0.85 && ai.radius > playerR * 1.12) {
+                    // AI 吃掉玩家
+                    state.gameActive = false;
+                    state.winner = ai;
+                    showWinnerMessage(`💀 ${ai.name} 吃掉了你！你输了... 💀`);
+                    return;
+                }
+            }
+            
+            // AI 互吃
+            for (let i = state.ais.length - 1; i >= 0; i--) {
+                const aiA = state.ais[i];
+                if (aiA.radius >= CONFIG.MAX_RADIUS) continue;
+                
+                for (let j = state.ais.length - 1; j >= 0; j--) {
+                    if (i === j) continue;
+                    const aiB = state.ais[j];
+                    if (aiB.radius >= CONFIG.MAX_RADIUS) continue;
+                    
+                    const dx = aiB.group.position.x - aiA.group.position.x;
+                    const dz = aiB.group.position.z - aiA.group.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (dist < aiA.radius * 0.85 && aiA.radius > aiB.radius * 1.12) {
+                        scene.remove(aiB.group);
+                        state.ais.splice(j, 1);
+                        state.aliveAI--;
+                        
+                        aiA.radius = Math.min(aiA.radius + aiB.radius * 0.5, CONFIG.MAX_RADIUS);
+                        aiA.score += Math.floor(aiB.score * 0.6) + 30;
+                        updateAIHoleVisual(aiA);
+                        document.getElementById('alive-count').textContent = state.aliveAI;
+                        
+                        if (j < i) i--;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // --- 显示胜利消息 ---
+        function showWinnerMessage(text) {
+            const existing = document.querySelector('.winner-message');
+            if (existing) existing.remove();
+            
+            const div = document.createElement('div');
+            div.className = 'winner-message';
+            div.textContent = text;
+            document.body.appendChild(div);
+        }
+
+        // --- 排行榜 ---
+        function updateLeaderboard() {
+            const entries = [
+                { name: state.playerName, score: state.playerScore, isPlayer: true, radius: state.playerRadius }
+            ];
+            
+            for (let ai of state.ais) {
+                entries.push({
+                    name: ai.name,
+                    score: ai.score,
+                    isPlayer: false,
+                    radius: ai.radius,
+                    color: ai.color
+                });
+            }
+            
+            entries.sort((a, b) => b.score - a.score);
+            
+            const listEl = document.getElementById('leaderboard-list');
+            listEl.innerHTML = '';
+            
+            const displayEntries = entries.slice(0, 12);
+            
+            displayEntries.forEach((entry, index) => {
+                const div = document.createElement('div');
+                div.className = `leaderboard-entry ${entry.isPlayer ? 'player' : ''}`;
+                
+                const rankColor = index === 0 ? '#ffaa00' : (index === 1 ? '#c0c0c0' : (index === 2 ? '#cd7f32' : '#666'));
+                
+                div.innerHTML = `
+                    <span class="rank" style="color: ${rankColor}">${index + 1}</span>
+                    <span class="name" style="${entry.isPlayer ? 'color: #ffaa00' : ''}">${entry.name}</span>
+                    <span class="score">${entry.score}</span>
+                `;
+                listEl.appendChild(div);
+            });
+            
+            const playerIndex = entries.findIndex(e => e.isPlayer);
+            if (playerIndex >= 12) {
+                const div = document.createElement('div');
+                div.className = 'leaderboard-entry player';
+                div.innerHTML = `
+                    <span class="rank">${playerIndex + 1}</span>
+                    <span class="name">${state.playerName}</span>
+                    <span class="score">${state.playerScore}</span>
+                `;
+                listEl.appendChild(div);
+            }
+        }
+
+        // --- 动画循环 ---
+        let clock = new THREE.Clock();
+
+        function animate() {
+            const deltaTime = Math.min(clock.getDelta(), 0.08);
+            
+            if (state.gameActive) {
+                updatePlayerMovement(deltaTime);
+                updateAIs(deltaTime);
+                handleEat();
+                handleHoleCollisions();
+                
+                if (state.objects.length < CONFIG.MIN_OBJECTS) {
+                    for (let i = 0; i < 40; i++) {
+                        const x = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.9;
+                        const z = (Math.random() - 0.5) * CONFIG.MAP_SIZE * 0.9;
+                        const obj = createObject(x, z);
+                        state.objects.push(obj);
+                    }
+                }
+            }
+            
+            updateCamera(deltaTime);
+            
+            state.leaderboardUpdateTimer -= deltaTime;
+            if (state.leaderboardUpdateTimer <= 0) {
+                updateLeaderboard();
+                state.leaderboardUpdateTimer = 0.3;
+            }
+            
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        // --- 窗口大小调整 ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 重新开始按钮 ---
+        document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+        // --- 启动游戏 ---
+        function init() {
+            state.playerHole = createPlayerHole();
+            updatePlayerHoleVisual();
+            initAIs(CONFIG.AI_COUNT);
+            generateObjects(CONFIG.OBJECT_COUNT);
+            initKeyboard();
+            updateLeaderboard();
+            
+            document.getElementById('alive-count').textContent = CONFIG.AI_COUNT;
+            
+            clock.start();
+            animate();
+        }
+
+        init();
+    </script>
+</body>
+</html>
