@@ -1,0 +1,119 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>火柴人 Ragdoll 射箭對戰</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:#1a2a32;color:#e8f1f2;font-family:system-ui,"Noto Sans TC",sans-serif;display:flex;justify-content:center;padding:10px}
+#box{width:100%;max-width:900px;background:#1f3a3f;border-radius:12px;padding:10px}
+#hud{display:flex;gap:10px;margin-bottom:8px}
+.pl{flex:1;border:2px solid;border-radius:8px;padding:6px 10px;background:#17302f;min-width:0}
+#h1{border-color:#4fa3c7}#h2{border-color:#db6b3e}
+.row{display:flex;justify-content:space-between;font-size:14px;font-weight:600;gap:6px}
+.bar{height:10px;background:#0e1c1f;border-radius:5px;margin-top:5px;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;transition:width .2s}
+#b1{background:#4fa3c7}#b2{background:#db6b3e}
+canvas{width:100%;height:auto;display:block;background:#2b4d52;border-radius:8px;touch-action:none;user-select:none}
+#ctl{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:14px}
+button{background:#3b7a78;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:14px;cursor:pointer}
+#pads{display:none;justify-content:space-between;gap:10px;margin-top:10px}#pads.on{display:flex}
+.pad{display:flex;gap:6px;flex:1}.pad b{flex:1;padding:16px 0;text-align:center;border-radius:10px;font-size:20px;user-select:none;touch-action:none;color:#fff}
+#pp1 b{background:#2f6f8c}#pp2 b{background:#a8512b}.pad b.dn{filter:brightness(1.5)}
+input[type=range]{flex:1;min-width:140px}
+</style></head><body><div id="box">
+<div id="hud">
+<div class="pl" id="h1"><div class="row"><span>P1 藍</span><span>🏆 <b id="w1">0</b></span><span id="t1">100</span></div><div class="bar"><i id="b1"></i></div></div>
+<div class="pl" id="h2"><div class="row"><span>P2 紅</span><span>🏆 <b id="w2">0</b></span><span id="t2">100</span></div><div class="bar"><i id="b2"></i></div></div>
+</div>
+<canvas id="c" width="900" height="550"></canvas>
+<div id="pads"><div class="pad" id="pp1"><b data-p="0" data-a="l">◀</b><b data-p="0" data-a="j">⤒</b><b data-p="0" data-a="r">▶</b></div><div class="pad" id="pp2"><b data-p="1" data-a="l">◀</b><b data-p="1" data-a="j">⤒</b><b data-p="1" data-a="r">▶</b></div></div>
+<div id="ctl"><button id="tg">觸控按鈕：開/關</button><button id="rs">重新開始</button>
+<label style="flex:1;display:flex;gap:8px;align-items:center">人物彈性 <input type="range" id="fx" min="0.1" max="1" step="0.05" value="0.5"><b id="fv">0.50</b></label></div>
+</div>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d'),W=900,H=550,GY=500,GR=.5,FR=.985,AS=13,AG=.18;
+const OFF=[[0,-62],[0,-40],[0,0],[-20,-26],[20,-26],[-11,40],[11,40]],MS=[1.5,1,3,1,1,1,1];
+const CON=[[0,1],[1,2],[1,3],[1,4],[2,5],[2,6]];
+CON.forEach(c=>c.push(Math.hypot(OFF[c[0]][0]-OFF[c[1]][0],OFF[c[0]][1]-OFF[c[1]][1])));
+let flex=.5,P,arrows,wins=[0,0],over=0,msg='',tm=0;
+const $=id=>document.getElementById(id);
+function hud(){for(let i=0;i<2;i++){$('b'+(i+1)).style.width=P[i].hp+'%';$('t'+(i+1)).textContent=P[i].hp+' HP';$('w'+(i+1)).textContent=wins[i]}}
+function mkP(i){const x=i?780:120;return{id:i,col:i?'#db6b3e':'#4fa3c7',dir:i?-1:1,hp:100,alive:true,mv:0,jump:false,cd:0,kAim:false,ta:null,bl:0,br:0,
+n:OFF.map((o,k)=>({x:x+o[0],y:460+o[1],vx:0,vy:0,m:MS[k],ox:0,oy:0}))}}
+function reset(full){P=[mkP(0),mkP(1)];arrows=[];over=0;msg='';if(full)wins=[0,0];hud()}
+const defAng=p=>p.dir>0?-.35:Math.PI+.35;
+function fire(p,a){if(!p.alive||over||p.cd>0)return;p.cd=20;p.dir=Math.cos(a)>=0?1:-1;const k=p.n[1];
+arrows.push({x:k.x+Math.cos(a)*14,y:k.y+Math.sin(a)*14,vx:Math.cos(a)*AS,vy:Math.sin(a)*AS,o:p.id,st:0})}
+function step(p){const n=p.n,h=n[2],f=flex,gr=n[5].y>=GY-3||n[6].y>=GY-3;
+if(p.alive){const kp=.01+(1-f)*.07;
+for(const i of [0,1,3,4,5,6]){n[i].vx+=(h.x+OFF[i][0]-n[i].x)*kp;n[i].vy+=(h.y+OFF[i][1]-n[i].y)*kp}
+h.vy+=((n[5].y+n[6].y)/2-40-h.y)*.25;
+if(p.mv){n.forEach((q,i)=>q.vx+=(i==2?1.5:.4)*p.mv);p.dir=p.mv}else if(gr)n.forEach(q=>q.vx*=.85);
+if(p.jump&&gr)n.forEach(q=>q.vy=-10)}
+p.jump=false;
+n.forEach(q=>{q.vx=Math.max(-5,Math.min(5,q.vx));q.ox=q.x;q.oy=q.y;q.vx*=FR;q.vy=q.vy*FR+GR;q.x+=q.vx;q.y+=q.vy});
+const it=Math.round(2+(1-f)*6),k=.5+.5*(1-f);
+for(let t=0;t<it;t++){for(const[a,b,L]of CON){const A=n[a],B=n[b],dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy)||1e-3,s=k*(d-L)/d/(1/A.m+1/B.m);
+A.x+=dx*s/A.m;A.y+=dy*s/A.m;B.x-=dx*s/B.m;B.y-=dy*s/B.m}
+n.forEach(q=>{if(q.y>GY)q.y=GY;q.x=Math.max(20,Math.min(880,q.x))})}
+n.forEach(q=>{if(q.y>=GY-.5)q.x=q.ox+(q.x-q.ox)*.8;q.vx=q.x-q.ox;q.vy=q.y-q.oy})}
+const K={},KP=[{l:'KeyA',r:'KeyD',j:'KeyW',f:'Space',f2:'KeyF'},{l:'ArrowLeft',r:'ArrowRight',j:'ArrowUp',f:'Enter',f2:'Slash'}];
+function aimOf(p){if(p.ta){const d=Math.hypot(p.ta.x-p.ta.sx,p.ta.y-p.ta.sy);if(d>=30)return Math.atan2(p.ta.y-p.ta.sy,p.ta.x-p.ta.sx)}
+return p.kAim?defAng(p):null}
+function update(){
+P.forEach((p,i)=>{const k=KP[i];let mv=(K[k.r]?1:0)-(K[k.l]?1:0);
+mv+=(p.br?1:0)-(p.bl?1:0);mv=Math.max(-1,Math.min(1,mv));
+p.mv=(p.alive&&!over)?mv:0;if(over)p.jump=false;if(p.cd>0)p.cd--;step(p)});
+for(const a of arrows){if(a.st){a.st++;continue}
+a.vy+=AG;a.x+=a.vx;a.y+=a.vy;
+if(a.y>=GY){a.y=GY;a.st=1;continue}if(a.x<-40||a.x>W+40){a.dead=1;continue}
+const q=P[1-a.o];
+if(q.alive&&!over&&q.n.some(m=>Math.hypot(m.x-a.x,m.y-a.y)<15)){a.dead=1;q.hp=Math.max(0,q.hp-34);
+q.n.forEach(m=>{m.vx+=Math.sign(a.vx)*3;m.vy-=2});
+if(q.hp<=0){q.alive=false;wins[a.o]++;over=1;tm=170;msg='🏆 玩家'+(a.o+1)+' 勝利！'}hud()}}
+arrows=arrows.filter(a=>a.st<120&&!a.dead);
+if(over&&--tm<=0)reset(false)}
+function draw(){X.clearRect(0,0,W,H);
+X.fillStyle='#16282c';X.fillRect(0,GY+4,W,H);X.fillStyle='#5d8a8f';X.fillRect(0,GY+4,W,3);
+X.lineCap='round';
+for(const a of arrows){const g=Math.atan2(a.vy,a.vx),c=Math.cos(g),s=Math.sin(g);X.strokeStyle='#e9d8a6';X.lineWidth=2.5;
+X.beginPath();X.moveTo(a.x-c*18,a.y-s*18);X.lineTo(a.x,a.y);X.stroke();
+X.fillStyle='#ddd';X.beginPath();X.moveTo(a.x+c*5,a.y+s*5);X.lineTo(a.x-c*3-s*3,a.y-s*3+c*3);X.lineTo(a.x-c*3+s*3,a.y-s*3-c*3);X.fill()}
+for(const p of P){const n=p.n,ang=aimOf(p);X.globalAlpha=p.alive?1:.55;X.strokeStyle=p.alive?p.col:'#889';X.lineWidth=4;
+X.beginPath();for(const[a,b]of CON){X.moveTo(n[a].x,n[a].y);X.lineTo(n[b].x,n[b].y)}X.stroke();
+X.beginPath();X.arc(n[0].x,n[0].y,10,0,7);X.fillStyle='#1f3a3f';X.fill();X.stroke();
+const hd=p.dir>0?n[4]:n[3],ba=ang!==null?ang:(p.dir>0?0:Math.PI);
+X.strokeStyle='#c9a66b';X.lineWidth=3;X.beginPath();X.arc(hd.x,hd.y,16,ba-1.1,ba+1.1);X.stroke();
+X.strokeStyle='#ddd';X.lineWidth=1;X.beginPath();X.moveTo(hd.x+Math.cos(ba-1.1)*16,hd.y+Math.sin(ba-1.1)*16);X.lineTo(hd.x+Math.cos(ba+1.1)*16,hd.y+Math.sin(ba+1.1)*16);X.stroke();
+X.globalAlpha=1;
+if(ang!==null&&p.alive){let x=n[1].x+Math.cos(ang)*14,y=n[1].y+Math.sin(ang)*14,vx=Math.cos(ang)*AS,vy=Math.sin(ang)*AS;X.fillStyle=p.col;
+for(let i=0;i<40;i++){vy+=AG;x+=vx;y+=vy;if(y>GY)break;if(i%3==0){X.globalAlpha=1-i/45;X.beginPath();X.arc(x,y,2.5,0,7);X.fill()}}X.globalAlpha=1}}
+X.fillStyle='rgba(255,255,255,.6)';X.font='13px system-ui,sans-serif';X.textAlign='center';
+X.fillText('P1: A/D · W · 空白或F 射箭　|　P2: ←/→ · ↑ · Enter或/ 射箭　|　R 重新開始',W/2,20);
+X.fillText('觸控：用下方按鈕 左/右/跳，在畫面上拖曳瞄準（放開射箭）',W/2,40);
+if(over){X.fillStyle='rgba(0,0,0,.45)';X.fillRect(0,200,W,110);X.fillStyle='#fff';X.font='bold 40px system-ui,sans-serif';X.fillText(msg,W/2,268)}}
+addEventListener('keydown',e=>{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();if(e.code=='KeyR'){reset(true);return}
+KP.forEach((k,i)=>{if([k.l,k.r,k.j,k.f,k.f2].includes(e.code)){e.preventDefault();K[e.code]=1;if(e.repeat)return;
+if(e.code==k.j)P[i].jump=true;if(e.code==k.f||e.code==k.f2)P[i].kAim=true}})});
+addEventListener('keyup',e=>{K[e.code]=0;KP.forEach((k,i)=>{if((e.code==k.f||e.code==k.f2)&&P[i].kAim){P[i].kAim=false;fire(P[i],defAng(P[i]))}})});
+const ptr={};
+function pos(e){const r=C.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]}
+C.addEventListener('pointerdown',e=>{e.preventDefault();C.setPointerCapture(e.pointerId);const[x,y]=pos(e),p=P[x<W/2?0:1];
+const o={p,x,y,sx:x,sy:y};ptr[e.pointerId]=o;p.ta=o});
+C.addEventListener('pointermove',e=>{const o=ptr[e.pointerId];if(o){[o.x,o.y]=pos(e)}});
+function up(e,ok){const o=ptr[e.pointerId];if(!o)return;delete ptr[e.pointerId];const p=o.p,d=Math.hypot(o.x-o.sx,o.y-o.sy);
+if(p.ta===o)p.ta=null;if(ok&&d>=30)fire(p,Math.atan2(o.y-o.sy,o.x-o.sx))}
+C.addEventListener('pointerup',e=>up(e,true));C.addEventListener('pointercancel',e=>up(e,false));
+document.querySelectorAll('.pad b').forEach(b=>{const i=+b.dataset.p,a=b.dataset.a;
+const set=v=>{const p=P[i];b.classList.toggle('dn',!!v);if(a=='l')p.bl=v;else if(a=='r')p.br=v};
+b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);if(a=='j'){P[i].jump=true;b.classList.add('dn')}else set(1)});
+['pointerup','pointercancel','lostpointercapture'].forEach(t=>b.addEventListener(t,()=>{if(a=='j')b.classList.remove('dn');else set(0)}))});
+$('tg').addEventListener('click',e=>{$('pads').classList.toggle('on');e.target.blur()});
+if(matchMedia('(hover:none)').matches)$('pads').classList.add('on');
+addEventListener('blur',()=>{for(const k in K)K[k]=0;P.forEach(p=>p.kAim=false)});
+$('fx').addEventListener('input',e=>{e.target.blur();flex=+e.target.value;$('fv').textContent=flex.toFixed(2)});
+$('rs').addEventListener('click',e=>{reset(true);e.target.blur()});
+reset(true);
+(function loop(){update();draw();requestAnimationFrame(loop)})();
+</script></body></html>
