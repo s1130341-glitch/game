@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 第一人稱射箭 - 粒子物理版</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #111;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.6);
+            padding: 10px 20px;
+            border-radius: 30px;
+            pointer-events: none;
+            z-index: 10;
+            font-weight: bold;
+            text-shadow: 1px 1px 3px black;
+            display: flex;
+            gap: 20px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #scoreboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0,0,0,0.6);
+            padding: 15px 25px;
+            border-radius: 16px;
+            pointer-events: none;
+            z-index: 10;
+            font-weight: bold;
+            text-shadow: 1px 1px 3px black;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.2);
+            text-align: right;
+            line-height: 1.8;
+        }
+        #scoreboard span {
+            color: #ffaa00;
+            font-size: 1.3em;
+        }
+        #turnIndicator {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 12px 30px;
+            border-radius: 40px;
+            font-size: 1.3em;
+            font-weight: bold;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            border: 2px solid #ffaa00;
+            box-shadow: 0 0 20px rgba(255,170,0,0.5);
+            transition: all 0.3s;
+            text-shadow: 1px 1px 3px black;
+        }
+        #powerBarContainer {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 20px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.3);
+            overflow: hidden;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+        }
+        #powerBar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #00ff88, #ffaa00, #ff3300);
+            transition: width 0.05s linear;
+            border-radius: 10px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            color: #ccc;
+            background: rgba(0,0,0,0.5);
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 0.9em;
+            z-index: 10;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.15);
+            line-height: 1.6;
+            pointer-events: none;
+        }
+        #controls kbd {
+            background: #333;
+            border-radius: 4px;
+            padding: 2px 8px;
+            color: #fff;
+            margin: 0 2px;
+            border: 1px solid #555;
+        }
+        #menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            color: white;
+            transition: opacity 0.5s;
+        }
+        #menu.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #menu h1 {
+            font-size: 4em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #ffaa00, #ff5500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(255,170,0,0.5);
+            letter-spacing: 4px;
+        }
+        #menu .sub {
+            color: #aaa;
+            margin-bottom: 40px;
+            font-size: 1.2em;
+        }
+        .menu-btn {
+            background: linear-gradient(135deg, #333, #222);
+            color: white;
+            border: 2px solid #ffaa00;
+            padding: 15px 40px;
+            margin: 8px;
+            border-radius: 50px;
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 280px;
+            text-align: center;
+            letter-spacing: 2px;
+            box-shadow: 0 0 15px rgba(255,170,0,0.2);
+        }
+        .menu-btn:hover {
+            background: #ffaa00;
+            color: black;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255,170,0,0.6);
+        }
+        .menu-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            background: #222;
+            border-color: #555;
+            box-shadow: none;
+        }
+        .menu-btn.small {
+            padding: 10px 25px;
+            font-size: 1em;
+            width: auto;
+        }
+        #connectionStatus {
+            margin-top: 25px;
+            color: #00ff88;
+            font-size: 1.1em;
+            min-height: 2em;
+            text-align: center;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 30px;
+            border: 1px solid #333;
+        }
+        #connectionStatus.error {
+            color: #ff5555;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .input-group input {
+            padding: 12px 20px;
+            border-radius: 30px;
+            border: 2px solid #444;
+            background: #222;
+            color: white;
+            font-size: 1em;
+            outline: none;
+            width: 200px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+        .input-group input:focus {
+            border-color: #ffaa00;
+        }
+        #gameCanvas {
+            display: block;
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* 準星 */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 5;
+            opacity: 0.85;
+            transition: all 0.2s;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #ffaa00;
+            box-shadow: 0 0 8px rgba(255,170,0,0.9);
+        }
+        #crosshair::before {
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            transform: translateY(-50%);
+        }
+        #crosshair::after {
+            left: 50%;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            transform: translateX(-50%);
+        }
+        .dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background: #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 10px #ffaa00;
+        }
+        /* 太近時的警告 */
+        #crosshair.tooClose::before, #crosshair.tooClose::after {
+            background: #ff3333;
+            box-shadow: 0 0 15px rgba(255,51,51,0.9);
+        }
+        #crosshair.tooClose .dot {
+            background: #ff3333;
+            box-shadow: 0 0 15px #ff3333;
+            transform: translate(-50%, -50%) scale(1.8);
+        }
+        .charging #crosshair::before, .charging #crosshair::after {
+            background: #ff3300;
+            box-shadow: 0 0 15px rgba(255,51,0,0.9);
+        }
+        .charging .dot {
+            background: #ff3300;
+            box-shadow: 0 0 15px #ff3300;
+            transform: translate(-50%, -50%) scale(1.5);
+        }
+        /* 太近提示文字 */
+        #tooCloseWarning {
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff3333;
+            font-size: 1.6em;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(255,51,51,0.8), 1px 1px 3px black;
+            z-index: 6;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+            background: rgba(0,0,0,0.5);
+            padding: 8px 20px;
+            border-radius: 30px;
+            border: 2px solid #ff3333;
+        }
+        #tooCloseWarning.show {
+            opacity: 1;
+        }
+        /* 第一人稱弓視圖 */
+        #bowView {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 200px;
+            height: 300px;
+            pointer-events: none;
+            z-index: 4;
+            opacity: 0.9;
+            transition: opacity 0.3s;
+        }
+        .bow-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+        }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1>3D 第一人稱射箭</h1>
+        <div class="sub">粒子物理 · 精準計分 · 走位射擊</div>
+        <button class="menu-btn" id="btnPvP">👥 雙人對戰 (同一裝置)</button>
+        <button class="menu-btn" id="btnPvC">🤖 對戰電腦</button>
+        <button class="menu-btn" id="btnHost">🌐 建立連線 (主機)</button>
+        <button class="menu-btn" id="btnJoin">🔗 加入連線 (客戶端)</button>
+        <div id="connectionStatus">選擇模式開始遊戲</div>
+        <div id="joinPanel" class="hidden" style="margin-top:10px;">
+            <div class="input-group">
+                <input type="text" id="peerIdInput" placeholder="輸入主機 ID" maxlength="20">
+                <button class="menu-btn small" id="btnConnect">連線</button>
+            </div>
+        </div>
+        <div style="margin-top:20px; color:#555; font-size:0.8em;">P2P 需要網路連線 (使用 PeerJS 公共伺服器)</div>
+    </div>
+
+    <div id="info" class="hidden">
+        <div>🏹 <span id="player1Name">玩家1</span>: <span id="player1Score">0</span></div>
+        <div>🎯 <span id="player2Name">玩家2</span>: <span id="player2Score">0</span></div>
+    </div>
+    <div id="scoreboard" class="hidden">
+        <div>回合 <span id="roundNum">1</span></div>
+        <div>目前: <span id="currentTurnName">玩家1</span></div>
+    </div>
+    <div id="turnIndicator" class="hidden">🏹 玩家1 的回合</div>
+    <div id="powerBarContainer" class="hidden">
+        <div id="powerBar"></div>
+    </div>
+    <div id="controls" class="hidden">
+        <div><kbd>WASD</kbd> 移動 · <kbd>滑鼠</kbd> 瞄準 · <kbd>按住左鍵</kbd> 蓄力 · <kbd>放開</kbd> 射擊</div>
+    </div>
+    <div id="crosshair" class="hidden">
+        <div class="dot"></div>
+    </div>
+    <div id="tooCloseWarning" class="hidden">⚠️ 太靠近靶了！後退一點</div>
+    <!-- 第一人稱弓視圖 -->
+    <div id="bowView" class="hidden">
+        <svg class="bow-svg" viewBox="0 0 200 300">
+            <defs>
+                <linearGradient id="bowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#8B4513;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#D2691E;stop-opacity:1" />
+                </linearGradient>
+                <linearGradient id="stringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" style="stop-color:#DDD;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#FFF;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <path d="M 120 20 Q 60 150 120 280" stroke="url(#bowGrad)" stroke-width="12" fill="none" stroke-linecap="round"/>
+            <line x1="120" y1="20" x2="120" y2="280" stroke="url(#stringGrad)" stroke-width="2"/>
+            <line x1="60" y1="150" x2="120" y2="150" stroke="#CCAA88" stroke-width="4"/>
+            <polygon points="120,150 130,146 130,154" fill="#AAA"/>
+            <ellipse cx="110" cy="150" rx="18" ry="25" fill="#E8B88A" opacity="0.9"/>
+        </svg>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- 遊戲狀態 ---
+        const state = {
+            mode: 'menu',
+            players: {
+                p1: { name: '玩家1', score: 0, isAI: false },
+                p2: { name: '玩家2', score: 0, isAI: false }
+            },
+            currentPlayer: 'p1',
+            round: 1,
+            gameActive: false,
+            power: 0,
+            charging: false,
+            arrowFlying: false,
+            turnLocked: false,
+            playerPos: { x: 0, z: 5 },
+            playerYaw: 0,
+            playerPitch: 0,
+            peer: null,
+            conn: null,
+            isHost: false,
+            remoteReady: false,
+            myId: null,
+            tooClose: false
+        };
+
+        // 按鍵狀態
+        const keys = { w: false, a: false, s: false, d: false };
+
+        // 遊戲規則常數
+        const MIN_SHOOT_DISTANCE = 7; // 最小射擊距離（玩家到靶子）
+        const PLAYER_MOVE_LIMIT = 14;  // 玩家移動範圍限制
+
+        // --- 場景設定 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        scene.fog = new THREE.Fog(0x0a0a1a, 25, 70);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.6, 5);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+        renderer.domElement.id = 'gameCanvas';
+
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        // --- 燈光 ---
+        const ambientLight = new THREE.AmbientLight(0x334455, 0.8);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
+        dirLight.position.set(10, 25, 10);
+        dirLight.castShadow = true;
+        dirLight.receiveShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        const d = 35;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.near = 1;
+        dirLight.shadow.camera.far = 70;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.PointLight(0x4466ff, 0.4);
+        fillLight.position.set(-8, 10, 15);
+        scene.add(fillLight);
+
+        const moonLight = new THREE.PointLight(0xaaccff, 0.3);
+        moonLight.position.set(-15, 20, -10);
+        scene.add(moonLight);
+
+        // --- 地面 ---
+        function createGround() {
+            const groundGeometry = new THREE.CircleGeometry(35, 64);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1a3a1a, 
+                roughness: 0.9,
+                metalness: 0.0
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.y = 0;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const gridHelper = new THREE.GridHelper(70, 35, 0x3355aa, 0x223366);
+            gridHelper.position.y = 0.01;
+            scene.add(gridHelper);
+
+            // 草地裝飾
+            const grassMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, emissive: 0x0a1a0a });
+            for (let i = 0; i < 400; i++) {
+                const blade = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.05, 0.15 + Math.random()*0.4, 3),
+                    grassMat
+                );
+                blade.position.x = (Math.random() - 0.5) * 65;
+                blade.position.z = (Math.random() - 0.5) * 65;
+                blade.position.y = 0.05;
+                blade.rotation.y = Math.random() * Math.PI;
+                blade.castShadow = true;
+                blade.receiveShadow = true;
+                scene.add(blade);
+            }
+
+            // 最小射擊距離視覺化 - 一個半透明圓環
+            const minDistRing = new THREE.Mesh(
+                new THREE.RingGeometry(MIN_SHOOT_DISTANCE - 0.15, MIN_SHOOT_DISTANCE, 64),
+                new THREE.MeshBasicMaterial({ 
+                    color: 0xff3333, 
+                    side: THREE.DoubleSide, 
+                    transparent: true, 
+                    opacity: 0.4 
+                })
+            );
+            minDistRing.rotation.x = -Math.PI / 2;
+            minDistRing.position.y = 0.03;
+            scene.add(minDistRing);
+
+            // 中心標記
+            const centerRing = new THREE.Mesh(
+                new THREE.RingGeometry(5, 5.2, 64),
+                new THREE.MeshStandardMaterial({ color: 0xccaa00, side: THREE.DoubleSide, emissive: 0x442200 })
+            );
+            centerRing.rotation.x = -Math.PI / 2;
+            centerRing.position.y = 0.02;
+            scene.add(centerRing);
+
+            // 邊界柱子
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2a, emissive: 0x110800 });
+            for (let i = 0; i < 16; i++) {
+                const angle = (i / 16) * Math.PI * 2;
+                const px = Math.cos(angle) * 18;
+                const pz = Math.sin(angle) * 18;
+                const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 2, 8), pillarMat);
+                pillar.position.set(px, 1, pz);
+                pillar.castShadow = true;
+                pillar.receiveShadow = true;
+                scene.add(pillar);
+                
+                const top = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.25, 8),
+                    new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0x442200 })
+                );
+                top.position.set(px, 2.1, pz);
+                top.castShadow = true;
+                scene.add(top);
+            }
+        }
+        createGround();
+
+        // --- 靶子 ---
+        const targets = [];
+        function createTargets() {
+            const targetPositions = [
+                { x: -6, y: 2.0, z: -12 },
+                { x: 0, y: 2.8, z: -15 },
+                { x: 6, y: 2.0, z: -12 },
+                { x: -4, y: 1.5, z: -8 },
+                { x: 4, y: 1.5, z: -8 },
+                { x: -8, y: 1.8, z: -10 },
+                { x: 8, y: 1.8, z: -10 }
+            ];
+
+            targetPositions.forEach((pos, index) => {
+                const targetGroup = new THREE.Group();
+                
+                const boardMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, emissive: 0x222222 });
+                const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 0.15), boardMat);
+                board.castShadow = true;
+                board.receiveShadow = true;
+                targetGroup.add(board);
+
+                const ringColors = [0xff3333, 0xffaa00, 0x33ff33, 0x3399ff, 0xff33ff];
+                const ringSizes = [
+                    { inner: 0.55, outer: 0.7, z: 0.08 },
+                    { inner: 0.4, outer: 0.55, z: 0.09 },
+                    { inner: 0.25, outer: 0.4, z: 0.1 },
+                    { inner: 0.1, outer: 0.25, z: 0.11 },
+                    { inner: 0, outer: 0.1, z: 0.12 }
+                ];
+                
+                ringSizes.forEach((size, i) => {
+                    const ring = new THREE.Mesh(
+                        new THREE.RingGeometry(size.inner, size.outer, 32),
+                        new THREE.MeshStandardMaterial({ 
+                            color: ringColors[i], 
+                            side: THREE.DoubleSide,
+                            emissive: ringColors[i],
+                            emissiveIntensity: 0.3
+                        })
+                    );
+                    ring.position.z = size.z;
+                    targetGroup.add(ring);
+                });
+
+                const bullseye = new THREE.Mesh(
+                    new THREE.CircleGeometry(0.08, 16),
+                    new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: 0.8 })
+                );
+                bullseye.position.z = 0.13;
+                targetGroup.add(bullseye);
+
+                const poleMat = new THREE.MeshStandardMaterial({ color: 0x8a6a4a });
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.5, 8), poleMat);
+                pole.position.y = -0.8;
+                pole.castShadow = true;
+                targetGroup.add(pole);
+
+                const base = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.4, 0.5, 0.15, 8),
+                    new THREE.MeshStandardMaterial({ color: 0x5a4a3a })
+                );
+                base.position.y = -1.55;
+                base.castShadow = true;
+                targetGroup.add(base);
+
+                targetGroup.position.set(pos.x, pos.y, pos.z);
+                targetGroup.userData = { 
+                    isTarget: true, 
+                    hit: false, 
+                    originalY: pos.y,
+                    index: index
+                };
+                scene.add(targetGroup);
+                targets.push(targetGroup);
+            });
+        }
+        createTargets();
+
+        // --- 粒子系統 ---
+        const particleGroups = [];
+
+        function createExplosion(position, color, count = 80, speed = 8) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(count * 3);
+            const velocities = [];
+            
+            for (let i = 0; i < count; i++) {
+                positions[i*3] = position.x;
+                positions[i*3+1] = position.y;
+                positions[i*3+2] = position.z;
+                
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                const v = speed * (0.5 + Math.random() * 0.5);
+                
+                velocities.push(new THREE.Vector3(
+                    Math.sin(phi) * Math.cos(theta) * v,
+                    Math.sin(phi) * Math.sin(theta) * v,
+                    Math.cos(phi) * v
+                ));
+            }
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: color,
+                size: 0.15,
+                transparent: true,
+                opacity: 1,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            
+            const particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+            
+            particleGroups.push({
+                mesh: particles,
+                velocities: velocities,
+                life: 1.0,
+                decay: 0.015 + Math.random() * 0.01,
+                gravity: new THREE.Vector3(0, -9.8, 0)
+            });
+            
+            return particles;
+        }
+
+        function createHitParticles(position, color, ringIndex) {
+            const colors = [0xff3333, 0xffaa00, 0x33ff33, 0x3399ff, 0xff33ff, 0xffffff];
+            const colorChoice = colors[Math.min(ringIndex, colors.length-1)];
+            
+            createExplosion(position, colorChoice, 100 + ringIndex * 20, 10 + ringIndex * 2);
+            
+            const ringGeo = new THREE.BufferGeometry();
+            const ringCount = 60;
+            const ringPositions = new Float32Array(ringCount * 3);
+            const ringVelocities = [];
+            
+            for (let i = 0; i < ringCount; i++) {
+                const angle = (i / ringCount) * Math.PI * 2;
+                ringPositions[i*3] = position.x;
+                ringPositions[i*3+1] = position.y;
+                ringPositions[i*3+2] = position.z;
+                
+                ringVelocities.push(new THREE.Vector3(
+                    Math.cos(angle) * (8 + ringIndex * 2),
+                    Math.sin(angle) * (8 + ringIndex * 2) * 0.3 + 3,
+                    Math.sin(angle) * (8 + ringIndex * 2) * 0.5
+                ));
+            }
+            
+            ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPositions, 3));
+            
+            const ringMat = new THREE.PointsMaterial({
+                color: colorChoice,
+                size: 0.2,
+                transparent: true,
+                opacity: 1,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            
+            const ringParticles = new THREE.Points(ringGeo, ringMat);
+            scene.add(ringParticles);
+            
+            particleGroups.push({
+                mesh: ringParticles,
+                velocities: ringVelocities,
+                life: 1.0,
+                decay: 0.02,
+                gravity: new THREE.Vector3(0, -5, 0)
+            });
+        }
+
+        function createDustParticles(position, count = 20) {
+            createExplosion(position, 0xaa8866, count, 3);
+        }
+
+        function updateParticles(delta) {
+            for (let i = particleGroups.length - 1; i >= 0; i--) {
+                const group = particleGroups[i];
+                const positions = group.mesh.geometry.attributes.position.array;
+                
+                for (let j = 0; j < group.velocities.length; j++) {
+                    group.velocities[j].add(group.gravity.clone().multiplyScalar(delta));
+                    
+                    positions[j*3] += group.velocities[j].x * delta;
+                    positions[j*3+1] += group.velocities[j].y * delta;
+                    positions[j*3+2] += group.velocities[j].z * delta;
+                }
+                
+                group.mesh.geometry.attributes.position.needsUpdate = true;
+                
+                group.life -= group.decay;
+                group.mesh.material.opacity = group.life;
+                group.mesh.material.size *= 0.99;
+                
+                if (group.life <= 0) {
+                    scene.remove(group.mesh);
+                    group.mesh.geometry.dispose();
+                    group.mesh.material.dispose();
+                    particleGroups.splice(i, 1);
+                }
+            }
+        }
+
+        // --- 箭矢 ---
+        let arrow = null;
+        let arrowTrailParticles = [];
+        const arrowVelocity = new THREE.Vector3();
+        const gravity = new THREE.Vector3(0, -9.8, 0);
+
+        function createArrow() {
+            const arrowGroup = new THREE.Group();
+            
+            const shaftMat = new THREE.MeshStandardMaterial({ color: 0xccaa88, emissive: 0x221100 });
+            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 6), shaftMat);
+            shaft.rotation.x = Math.PI / 2;
+            shaft.position.z = 0;
+            shaft.castShadow = true;
+            arrowGroup.add(shaft);
+
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.1, emissive: 0x333333 });
+            const head = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.3, 8), headMat);
+            head.rotation.x = Math.PI / 2;
+            head.position.z = 0.85;
+            head.castShadow = true;
+            arrowGroup.add(head);
+
+            const featherMat = new THREE.MeshStandardMaterial({ color: 0xff3333, emissive: 0x330000 });
+            for (let i = 0; i < 3; i++) {
+                const feather = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.15, 0.08), featherMat);
+                feather.position.z = -0.6;
+                feather.position.y = Math.sin(i * Math.PI * 2 / 3) * 0.1;
+                feather.position.x = Math.cos(i * Math.PI * 2 / 3) * 0.1;
+                feather.rotation.z = i * Math.PI * 2 / 3;
+                feather.castShadow = true;
+                arrowGroup.add(feather);
+            }
+            
+            const glowMat = new THREE.MeshBasicMaterial({ color: 0x88aaff, transparent: true, opacity: 0.6 });
+            const glow = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8), glowMat);
+            glow.position.z = 0.85;
+            arrowGroup.add(glow);
+
+            return arrowGroup;
+        }
+
+        function spawnArrowTrail(position) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(3);
+            positions[0] = position.x;
+            positions[1] = position.y;
+            positions[2] = position.z;
+            
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: 0x88aaff,
+                size: 0.12,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            
+            const point = new THREE.Points(geometry, material);
+            scene.add(point);
+            
+            arrowTrailParticles.push({
+                mesh: point,
+                life: 0.5,
+                decay: 0.02
+            });
+        }
+
+        function updateArrowTrail(delta) {
+            for (let i = arrowTrailParticles.length - 1; i >= 0; i--) {
+                const p = arrowTrailParticles[i];
+                p.life -= p.decay;
+                p.mesh.material.opacity = p.life * 0.8;
+                p.mesh.material.size *= 0.98;
+                
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    p.mesh.geometry.dispose();
+                    p.mesh.material.dispose();
+                    arrowTrailParticles.splice(i, 1);
+                }
+            }
+        }
+
+        // --- 射擊 ---
+        function shootArrow(power) {
+            if (state.arrowFlying) return;
+            
+            const speed = 20 + power * 25;
+            
+            const startPos = camera.position.clone();
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            startPos.add(forward.clone().multiplyScalar(1.0));
+            
+            const direction = forward.clone();
+            
+            arrow = createArrow();
+            arrow.position.copy(startPos);
+            const lookAt = startPos.clone().add(direction);
+            arrow.lookAt(lookAt);
+            scene.add(arrow);
+            
+            arrowVelocity.copy(direction).multiplyScalar(speed);
+            
+            state.arrowFlying = true;
+            state.turnLocked = true;
+            
+            createExplosion(startPos, 0x88aaff, 20, 3);
+            
+            if (state.mode === 'host' || state.mode === 'client') {
+                sendMove({
+                    type: 'shoot',
+                    power: power,
+                    direction: { x: direction.x, y: direction.y, z: direction.z },
+                    startPos: { x: startPos.x, y: startPos.y, z: startPos.z }
+                });
+            }
+        }
+
+        // --- 碰撞檢測 ---
+        function checkArrowHit() {
+            if (!arrow) return false;
+            
+            const arrowPos = arrow.position;
+            
+            for (const target of targets) {
+                if (target.userData.hit) continue;
+                
+                const localPos = target.worldToLocal(arrowPos.clone());
+                
+                if (Math.abs(localPos.x) < 0.8 && Math.abs(localPos.y) < 0.8 && Math.abs(localPos.z) < 0.3) {
+                    const distFromCenter = Math.sqrt(localPos.x * localPos.x + localPos.y * localPos.y);
+                    
+                    let points = 10;
+                    let ringIndex = 0;
+                    
+                    if (distFromCenter < 0.1) { points = 50; ringIndex = 4; }
+                    else if (distFromCenter < 0.25) { points = 40; ringIndex = 3; }
+                    else if (distFromCenter < 0.4) { points = 30; ringIndex = 2; }
+                    else if (distFromCenter < 0.55) { points = 20; ringIndex = 1; }
+                    else if (distFromCenter < 0.7) { points = 10; ringIndex = 0; }
+                    else { points = 5; ringIndex = 0; }
+                    
+                    state.players[state.currentPlayer].score += points;
+                    
+                    const hitWorldPos = arrowPos.clone();
+                    createHitParticles(hitWorldPos, 0xffffff, ringIndex);
+                    
+                    const originalRot = target.rotation.z;
+                    target.rotation.z = 0.3;
+                    setTimeout(() => { target.rotation.z = originalRot; }, 100);
+                    
+                    target.userData.hit = true;
+                    target.visible = false;
+                    
+                    removeArrow();
+                    updateUI();
+                    
+                    const remainingTargets = targets.filter(t => !t.userData.hit);
+                    if (remainingTargets.length === 0) {
+                        setTimeout(() => {
+                            targets.forEach(t => { 
+                                t.userData.hit = false; 
+                                t.visible = true; 
+                                t.rotation.z = 0;
+                            });
+                        }, 1000);
+                    }
+                    
+                    if (state.mode === 'host' || state.mode === 'client') {
+                        sendMove({
+                            type: 'hit',
+                            player: state.currentPlayer,
+                            score: state.players[state.currentPlayer].score,
+                            targetIndex: target.userData.index,
+                            points: points
+                        });
+                    }
+                    
+                    setTimeout(() => {
+                        switchTurn();
+                    }, 1000);
+                    
+                    return true;
+                }
+            }
+            
+            if (arrowPos.y < 0.1 && arrowVelocity.y < 0) {
+                createDustParticles(arrowPos, 30);
+                removeArrow();
+                setTimeout(() => {
+                    switchTurn();
+                }, 500);
+                return true;
+            }
+            
+            if (arrowPos.length() > 70) {
+                removeArrow();
+                setTimeout(() => {
+                    switchTurn();
+                }, 300);
+                return true;
+            }
+            
+            return false;
+        }
+
+        function removeArrow() {
+            if (arrow) {
+                scene.remove(arrow);
+                arrow = null;
+            }
+            state.arrowFlying = false;
+        }
+
+        // --- 回合切換 ---
+        function switchTurn() {
+            if (state.mode === 'pvc') {
+                state.currentPlayer = state.currentPlayer === 'p1' ? 'p2' : 'p1';
+            } else if (state.mode === 'pvp') {
+                state.currentPlayer = state.currentPlayer === 'p1' ? 'p2' : 'p1';
+            } else if (state.mode === 'host' || state.mode === 'client') {
+                state.currentPlayer = state.currentPlayer === 'p1' ? 'p2' : 'p1';
+            }
+            
+            state.turnLocked = false;
+            state.round++;
+            updateUI();
+            
+            // 重置玩家位置到起始點
+            state.playerPos = { x: 0, z: 5 };
+            camera.position.x = state.playerPos.x;
+            camera.position.z = state.playerPos.z;
+            camera.position.y = 1.6;
+            
+            if (state.players[state.currentPlayer].isAI) {
+                setTimeout(() => {
+                    if (state.gameActive && !state.arrowFlying && state.players[state.currentPlayer].isAI) {
+                        shootAIArrow(0.6 + Math.random() * 0.4);
+                    }
+                }, 1200);
+            }
+            
+            if (state.mode === 'host') {
+                sendMove({ type: 'turn', player: state.currentPlayer });
+            }
+        }
+
+        // AI 射擊
+        function shootAIArrow(power) {
+            if (state.arrowFlying) return;
+            
+            const speed = 20 + power * 25;
+            
+            const startPos = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                1.6,
+                5
+            );
+            
+            const availableTargets = targets.filter(t => !t.userData.hit);
+            let direction;
+            
+            if (availableTargets.length > 0) {
+                const target = availableTargets[Math.floor(Math.random() * availableTargets.length)];
+                const targetPos = target.position.clone();
+                targetPos.x += (Math.random() - 0.5) * 1.5;
+                targetPos.y += (Math.random() - 0.5) * 1.0;
+                
+                direction = targetPos.sub(startPos).normalize();
+                direction.y += 0.1;
+                direction.normalize();
+            } else {
+                direction = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5,
+                    0.1,
+                    -1
+                ).normalize();
+            }
+            
+            arrow = createArrow();
+            arrow.position.copy(startPos);
+            arrow.lookAt(startPos.clone().add(direction));
+            scene.add(arrow);
+            
+            arrowVelocity.copy(direction).multiplyScalar(speed);
+            
+            state.arrowFlying = true;
+            state.turnLocked = true;
+            
+            createExplosion(startPos, 0xff6644, 20, 3);
+        }
+
+        // --- UI 更新 ---
+        function updateUI() {
+            document.getElementById('player1Score').textContent = state.players.p1.score;
+            document.getElementById('player2Score').textContent = state.players.p2.score;
+            document.getElementById('player1Name').textContent = state.players.p1.name;
+            document.getElementById('player2Name').textContent = state.players.p2.name;
+            document.getElementById('roundNum').textContent = state.round;
+            
+            const currentName = state.players[state.currentPlayer].name;
+            document.getElementById('currentTurnName').textContent = currentName;
+            
+            const indicator = document.getElementById('turnIndicator');
+            indicator.textContent = `🏹 ${currentName} 的回合`;
+            
+            if (state.currentPlayer === 'p1') {
+                indicator.style.borderColor = '#4488ff';
+                indicator.style.boxShadow = '0 0 20px rgba(68,136,255,0.5)';
+            } else {
+                indicator.style.borderColor = '#ff6644';
+                indicator.style.boxShadow = '0 0 20px rgba(255,102,68,0.5)';
+            }
+        }
+
+        // --- 檢查玩家是否太靠近靶子 ---
+        function checkTooClose() {
+            // 找出最近的靶子距離
+            let minDist = Infinity;
+            for (const target of targets) {
+                if (target.userData.hit) continue;
+                const dx = camera.position.x - target.position.x;
+                const dz = camera.position.z - target.position.z;
+                const dist = Math.sqrt(dx*dx + dz*dz);
+                if (dist < minDist) minDist = dist;
+            }
+            
+            // 如果所有靶子都被打掉了，就不算太近
+            const activeTargets = targets.filter(t => !t.userData.hit);
+            if (activeTargets.length === 0) {
+                state.tooClose = false;
+                return false;
+            }
+            
+            const tooClose = minDist < MIN_SHOOT_DISTANCE;
+            state.tooClose = tooClose;
+            return tooClose;
+        }
+
+        // --- 玩家移動 ---
+        function updatePlayerPosition(delta) {
+            if (!state.gameActive || state.arrowFlying || state.turnLocked) return;
+            if (state.players[state.currentPlayer].isAI) return;
+            if (state.mode === 'client' && state.currentPlayer === 'p1') return;
+            if (state.mode === 'host' && state.currentPlayer === 'p2') return;
+            
+            const moveSpeed = 4.0;
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            forward.y = 0;
+            forward.normalize();
+            
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+            right.y = 0;
+            right.normalize();
+            
+            const move = new THREE.Vector3();
+            
+            if (keys.w) move.add(forward);
+            if (keys.s) move.sub(forward);
+            if (keys.a) move.sub(right);
+            if (keys.d) move.add(right);
+            
+            if (move.length() > 0) {
+                move.normalize().multiplyScalar(moveSpeed * delta);
+                state.playerPos.x += move.x;
+                state.playerPos.z += move.z;
+                
+                // 限制整體範圍（避免跑出場地）
+                state.playerPos.x = Math.max(-PLAYER_MOVE_LIMIT, Math.min(PLAYER_MOVE_LIMIT, state.playerPos.x));
+                state.playerPos.z = Math.max(-PLAYER_MOVE_LIMIT, Math.min(PLAYER_MOVE_LIMIT, state.playerPos.z));
+                
+                // 檢查是否太靠近任何靶子，如果是就推回去
+                for (const target of targets) {
+                    if (target.userData.hit) continue;
+                    const dx = state.playerPos.x - target.position.x;
+                    const dz = state.playerPos.z - target.position.z;
+                    const dist = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (dist < MIN_SHOOT_DISTANCE && dist > 0.01) {
+                        // 把玩家推到最小距離之外
+                        const pushX = (dx / dist) * MIN_SHOOT_DISTANCE;
+                        const pushZ = (dz / dist) * MIN_SHOOT_DISTANCE;
+                        state.playerPos.x = target.position.x + pushX;
+                        state.playerPos.z = target.position.z + pushZ;
+                    }
+                }
+            }
+            
+            // 更新相機位置
+            camera.position.x = state.playerPos.x;
+            camera.position.z = state.playerPos.z;
+            camera.position.y = 1.6;
+        }
+
+        // --- 遊戲模式設定 ---
+        function startGame(mode) {
+            state.mode = mode;
+            state.gameActive = true;
+            state.round = 1;
+            
+            state.players.p1.score = 0;
+            state.players.p2.score = 0;
+            state.currentPlayer = 'p1';
+            state.turnLocked = false;
+            state.arrowFlying = false;
+            
+            state.playerPos = { x: 0, z: 5 };
+            state.playerYaw = 0;
+            state.playerPitch = 0;
+            state.tooClose = false;
+            
+            targets.forEach(t => { 
+                t.userData.hit = false; 
+                t.visible = true;
+                t.rotation.z = 0;
+            });
+            
+            if (arrow) {
+                scene.remove(arrow);
+                arrow = null;
+            }
+            
+            particleGroups.forEach(g => {
+                scene.remove(g.mesh);
+                g.mesh.geometry.dispose();
+                g.mesh.material.dispose();
+            });
+            particleGroups.length = 0;
+            
+            arrowTrailParticles.forEach(p => {
+                scene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+            });
+            arrowTrailParticles.length = 0;
+            
+            if (mode === 'pvp') {
+                state.players.p1.name = '玩家1';
+                state.players.p2.name = '玩家2';
+                state.players.p1.isAI = false;
+                state.players.p2.isAI = false;
+            } else if (mode === 'pvc') {
+                state.players.p1.name = '玩家';
+                state.players.p2.name = '電腦';
+                state.players.p1.isAI = false;
+                state.players.p2.isAI = true;
+            } else if (mode === 'host') {
+                state.players.p1.name = '主機';
+                state.players.p2.name = '客戶端';
+                state.players.p1.isAI = false;
+                state.players.p2.isAI = false;
+                state.isHost = true;
+            } else if (mode === 'client') {
+                state.players.p1.name = '主機';
+                state.players.p2.name = '客戶端';
+                state.players.p1.isAI = false;
+                state.players.p2.isAI = false;
+                state.isHost = false;
+            }
+            
+            updateUI();
+            
+            document.getElementById('menu').classList.add('hidden');
+            document.getElementById('info').classList.remove('hidden');
+            document.getElementById('scoreboard').classList.remove('hidden');
+            document.getElementById('turnIndicator').classList.remove('hidden');
+            document.getElementById('powerBarContainer').classList.remove('hidden');
+            document.getElementById('controls').classList.remove('hidden');
+            document.getElementById('crosshair').classList.remove('hidden');
+            document.getElementById('bowView').classList.remove('hidden');
+            document.getElementById('tooCloseWarning').classList.remove('hidden');
+            
+            camera.position.set(state.playerPos.x, 1.6, state.playerPos.z);
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = 0;
+            camera.rotation.x = 0;
+            
+            if (state.players[state.currentPlayer].isAI) {
+                setTimeout(() => {
+                    if (state.gameActive && state.players[state.currentPlayer].isAI) {
+                        shootAIArrow(0.7);
+                    }
+                }, 1500);
+            }
+        }
+
+        // --- 滑鼠控制 ---
+        let isCharging = false;
+        let chargeStart = 0;
+        let pointerLocked = false;
+
+        document.addEventListener('pointerlockchange', () => {
+            pointerLocked = document.pointerLockElement === renderer.domElement;
+        });
+
+        renderer.domElement.addEventListener('click', () => {
+            if (state.gameActive && !pointerLocked) {
+                renderer.domElement.requestPointerLock();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!pointerLocked || !state.gameActive) return;
+            
+            const sensitivity = 0.002;
+            state.playerYaw -= e.movementX * sensitivity;
+            state.playerPitch -= e.movementY * sensitivity;
+            
+            state.playerPitch = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, state.playerPitch));
+            
+            camera.rotation.y = state.playerYaw;
+            camera.rotation.x = state.playerPitch;
+        });
+
+        document.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            if (!state.gameActive || state.arrowFlying || state.turnLocked) return;
+            if (state.players[state.currentPlayer].isAI) return;
+            if (state.mode === 'client' && state.currentPlayer === 'p1') return;
+            if (state.mode === 'host' && state.currentPlayer === 'p2') return;
+            
+            // 檢查是否太近
+            if (checkTooClose()) {
+                // 太近，不能射擊
+                document.getElementById('tooCloseWarning').classList.add('show');
+                setTimeout(() => {
+                    document.getElementById('tooCloseWarning').classList.remove('show');
+                }, 1200);
+                return;
+            }
+            
+            isCharging = true;
+            state.charging = true;
+            chargeStart = performance.now();
+            document.getElementById('powerBar').style.width = '0%';
+            document.getElementById('crosshair').classList.add('charging');
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (e.button !== 0) return;
+            if (!isCharging) return;
+            isCharging = false;
+            state.charging = false;
+            document.getElementById('crosshair').classList.remove('charging');
+            
+            const chargeDuration = performance.now() - chargeStart;
+            const power = Math.min(chargeDuration / 1500, 1);
+            
+            if (power < 0.05) {
+                document.getElementById('powerBar').style.width = '0%';
+                return;
+            }
+            
+            // 再次檢查距離（以防在蓄力期間移動）
+            if (checkTooClose()) {
+                document.getElementById('tooCloseWarning').classList.add('show');
+                setTimeout(() => {
+                    document.getElementById('tooCloseWarning').classList.remove('show');
+                }, 1200);
+                document.getElementById('powerBar').style.width = '0%';
+                return;
+            }
+            
+            shootArrow(power);
+            document.getElementById('powerBar').style.width = '0%';
+        });
+
+        // 鍵盤
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'w') keys.w = true;
+            if (key === 'a') keys.a = true;
+            if (key === 's') keys.s = true;
+            if (key === 'd') keys.d = true;
+            
+            if (e.key === 'Escape' && state.gameActive) {
+                state.gameActive = false;
+                document.exitPointerLock();
+                document.getElementById('menu').classList.remove('hidden');
+                document.getElementById('info').classList.add('hidden');
+                document.getElementById('scoreboard').classList.add('hidden');
+                document.getElementById('turnIndicator').classList.add('hidden');
+                document.getElementById('powerBarContainer').classList.add('hidden');
+                document.getElementById('controls').classList.add('hidden');
+                document.getElementById('crosshair').classList.add('hidden');
+                document.getElementById('bowView').classList.add('hidden');
+                document.getElementById('tooCloseWarning').classList.add('hidden');
+                if (arrow) {
+                    scene.remove(arrow);
+                    arrow = null;
+                }
+                state.arrowFlying = false;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'w') keys.w = false;
+            if (key === 'a') keys.a = false;
+            if (key === 's') keys.s = false;
+            if (key === 'd') keys.d = false;
+        });
+
+        // --- PeerJS ---
+        function initPeer(host = false) {
+            if (typeof Peer === 'undefined') {
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js';
+                script.onload = () => createPeer(host);
+                script.onerror = () => {
+                    document.getElementById('connectionStatus').textContent = '無法載入 PeerJS，請檢查網路';
+                    document.getElementById('connectionStatus').classList.add('error');
+                };
+                document.head.appendChild(script);
+            } else {
+                createPeer(host);
+            }
+        }
+
+        function createPeer(host) {
+            const statusEl = document.getElementById('connectionStatus');
+            
+            if (host) {
+                state.peer = new Peer(null, { debug: 2 });
+                
+                state.peer.on('open', (id) => {
+                    statusEl.textContent = `主機 ID: ${id} (等待連線...)`;
+                    statusEl.classList.remove('error');
+                    state.isHost = true;
+                    state.myId = id;
+                });
+                
+                state.peer.on('connection', (conn) => {
+                    state.conn = conn;
+                    conn.on('open', () => {
+                        statusEl.textContent = '客戶端已連線！開始遊戲';
+                        state.remoteReady = true;
+                        startGame('host');
+                    });
+                    
+                    conn.on('data', (data) => handleRemoteData(data));
+                    
+                    conn.on('close', () => {
+                        statusEl.textContent = '連線已斷開';
+                        statusEl.classList.add('error');
+                        state.gameActive = false;
+                    });
+                });
+                
+                state.peer.on('error', (err) => {
+                    statusEl.textContent = `錯誤: ${err.message}`;
+                    statusEl.classList.add('error');
+                });
+            } else {
+                const peerId = document.getElementById('peerIdInput').value.trim();
+                if (!peerId) {
+                    statusEl.textContent = '請輸入主機 ID';
+                    statusEl.classList.add('error');
+                    return;
+                }
+                
+                state.peer = new Peer(null, { debug: 2 });
+                
+                state.peer.on('open', () => {
+                    statusEl.textContent = '正在連線到主機...';
+                    state.conn = state.peer.connect(peerId);
+                    
+                    state.conn.on('open', () => {
+                        statusEl.textContent = '已連線到主機！開始遊戲';
+                        state.remoteReady = true;
+                        state.isHost = false;
+                        startGame('client');
+                    });
+                    
+                    state.conn.on('data', (data) => handleRemoteData(data));
+                    
+                    state.conn.on('close', () => {
+                        statusEl.textContent = '連線已斷開';
+                        statusEl.classList.add('error');
+                        state.gameActive = false;
+                    });
+                });
+                
+                state.peer.on('error', (err) => {
+                    statusEl.textContent = `連線錯誤: ${err.message}`;
+                    statusEl.classList.add('error');
+                });
+            }
+        }
+
+        function sendMove(data) {
+            if (state.conn && state.conn.open) {
+                state.conn.send(data);
+            }
+        }
+
+        function handleRemoteData(data) {
+            if (data.type === 'shoot') {
+                const direction = new THREE.Vector3(data.direction.x, data.direction.y, data.direction.z);
+                const startPos = new THREE.Vector3(data.startPos.x, data.startPos.y, data.startPos.z);
+                
+                arrow = createArrow();
+                arrow.position.copy(startPos);
+                arrow.lookAt(startPos.clone().add(direction));
+                scene.add(arrow);
+                
+                arrowVelocity.copy(direction).multiplyScalar(20 + data.power * 25);
+                
+                state.arrowFlying = true;
+                state.turnLocked = true;
+            } else if (data.type === 'turn') {
+                state.currentPlayer = data.player;
+                state.turnLocked = false;
+                state.round++;
+                updateUI();
+                
+                state.playerPos = { x: 0, z: 5 };
+                camera.position.x = state.playerPos.x;
+                camera.position.z = state.playerPos.z;
+                camera.position.y = 1.6;
+            } else if (data.type === 'hit') {
+                state.players[data.player].score = data.score;
+                updateUI();
+                
+                if (data.targetIndex !== undefined) {
+                    const target = targets[data.targetIndex];
+                    if (target && !target.userData.hit) {
+                        target.userData.hit = true;
+                        target.visible = false;
+                        createHitParticles(target.position.clone(), 0xffffff, 3);
+                    }
+                }
+            }
+        }
+
+        // --- 動畫循環 ---
+        let lastTime = performance.now();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const now = performance.now();
+            const delta = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
+            
+            if (isCharging) {
+                const chargeDuration = now - chargeStart;
+                const power = Math.min(chargeDuration / 1500, 1);
+                document.getElementById('powerBar').style.width = (power * 100) + '%';
+            }
+            
+            updatePlayerPosition(delta);
+            
+            // 每幀檢查是否太近（更新UI）
+            if (state.gameActive && !state.arrowFlying && !state.turnLocked) {
+                const tooClose = checkTooClose();
+                const crosshair = document.getElementById('crosshair');
+                if (tooClose) {
+                    crosshair.classList.add('tooClose');
+                } else {
+                    crosshair.classList.remove('tooClose');
+                }
+            }
+            
+            if (arrow && state.arrowFlying) {
+                arrowVelocity.add(gravity.clone().multiplyScalar(delta));
+                arrow.position.add(arrowVelocity.clone().multiplyScalar(delta));
+                
+                if (arrowVelocity.length() > 0.1) {
+                    const lookAt = arrow.position.clone().add(arrowVelocity.clone().normalize());
+                    arrow.lookAt(lookAt);
+                }
+                
+                if (Math.random() < 0.5) {
+                    spawnArrowTrail(arrow.position.clone());
+                }
+                
+                checkArrowHit();
+            }
+            
+            updateParticles(delta);
+            updateArrowTrail(delta);
+            
+            targets.forEach((target, i) => {
+                if (!target.userData.hit) {
+                    target.position.y = target.userData.originalY + Math.sin(now / 1500 + i) * 0.08;
+                    target.rotation.y = Math.sin(now / 3000 + i) * 0.1;
+                }
+            });
+            
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        animate();
+
+        // 視窗調整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 選單按鈕 ---
+        document.getElementById('btnPvP').addEventListener('click', () => startGame('pvp'));
+        document.getElementById('btnPvC').addEventListener('click', () => startGame('pvc'));
+        
+        document.getElementById('btnHost').addEventListener('click', () => {
+            document.getElementById('connectionStatus').textContent = '正在建立主機...';
+            document.getElementById('connectionStatus').classList.remove('error');
+            initPeer(true);
+        });
+        
+        document.getElementById('btnJoin').addEventListener('click', () => {
+            document.getElementById('joinPanel').classList.remove('hidden');
+            document.getElementById('connectionStatus').textContent = '請輸入主機 ID';
+            document.getElementById('connectionStatus').classList.remove('error');
+        });
+        
+        document.getElementById('btnConnect').addEventListener('click', () => {
+            document.getElementById('connectionStatus').textContent = '正在連線...';
+            document.getElementById('connectionStatus').classList.remove('error');
+            initPeer(false);
+        });
+
+        window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        console.log('3D 第一人稱射箭遊戲已載入');
+    </script>
+</body>
+</html>
